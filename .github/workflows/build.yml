@@ -1,0 +1,39 @@
+name: Build
+
+# Builds the solution (frontend included) and runs the tests that need neither GTA V nor the key files.
+# The decoder regression tests skip themselves when the locally generated fixture is absent.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/EmotePreviewer.Web/package-lock.json
+
+      - name: Build
+        run: dotnet build EmotePreviewer.slnx -c Release
+
+      - name: Test
+        run: dotnet test EmotePreviewer.slnx -c Release --no-build --logger "console;verbosity=normal"
+
+      - name: Publish (self-contained, single file)
+        run: dotnet publish src/EmotePreviewer.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:SkipWebBuild=true -o out/publish
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EmotePreviewer-win-x64
+          path: out/publish/EmotePreviewer.exe

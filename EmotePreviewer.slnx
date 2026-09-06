@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/EmotePreviewer.Core/EmotePreviewer.Core.csproj" />
+    <Project Path="src/EmotePreviewer.App/EmotePreviewer.App.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/EmotePreviewer.DevTools/EmotePreviewer.DevTools.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/EmotePreviewer.Core.Tests/EmotePreviewer.Core.Tests.csproj" />
+    <Project Path="tests/EmotePreviewer.App.Tests/EmotePreviewer.App.Tests.csproj" />
+    <Project Path="tests/EmotePreviewer.Fixtures/EmotePreviewer.Fixtures.csproj" />
+  </Folder>
+  <Folder Name="/third_party/">
+    <Project Path="third_party/gta-toolkit/RageLib/RageLib.csproj" />
+    <Project Path="third_party/gta-toolkit/RageLib.GTA5/RageLib.GTA5.csproj" />
+  </Folder>
+</Solution>
