@@ -347,6 +347,17 @@ public sealed class GtaToolkitGameData : IGameDataSource
         return _ydr.TryGetValue(hash, out var e) ? (long)e.File.Size : _ydd.TryGetValue(hash, out e) ? (long)e.File.Size : _yft.TryGetValue(hash, out e) ? (long)e.File.Size : null;
     }
 
+    /// <summary>Export a skeleton fragment from the indexed GTA archives for external inspection tools.</summary>
+    public bool ExportSkeleton(string yftName, string outPath)
+    {
+        if (!_yft.TryGetValue(JenkinsHash.HashLower(yftName), out var entry)) return false;
+        using var ms = ExportResource(entry.File);
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath))!);
+        using var outFile = File.Create(outPath);
+        ms.CopyTo(outFile);
+        return true;
+    }
+
     /// <summary>Size of the archive entry, used together with the path as a cheap ETag for baked clips.</summary>
     public long? ClipDictionarySize(string name) => _ycd.TryGetValue(JenkinsHash.HashLower(name), out var e) ? (long)e.File.Size : null;
 

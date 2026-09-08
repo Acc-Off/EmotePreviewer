@@ -175,4 +175,60 @@ public sealed class ResourceApiTests
         Assert.Equal(11, (await host.Client.GetFromJsonAsync<JsonElement>("/api/catalog")).GetProperty("entries").GetArrayLength());
         Assert.Equal(HttpStatusCode.NotFound, (await host.Client.PostAsJsonAsync("/api/resources/nope/enabled", new { enabled = true })).StatusCode);
     }
+    [Fact]
+    public async Task RescanPicksUpFilesEditedInPlace()
+    {
+        await using var host = await TestHost.StartAsync(o => o.ConfigureServices = s => s.AddSingleton<HttpMessageHandler>(new FakeGitHub()));
+        var folder = TestHost.WriteRpEmotesResource(host.DataDirectory, "edited");
+        Assert.Equal(HttpStatusCode.OK, (await host.Client.PostAsJsonAsync("/api/resources", new { origin = "folder", path = folder })).StatusCode);
+        var before = await host.Client.GetFromJsonAsync<JsonElement>("/api/catalog");
+        int count = before.GetProperty("entries").GetArrayLength();
+
+        // a converter writes a new .ycd and registers it: the running app must see both after a rescan
+        var lua = Path.Combine(folder, "client", "AnimationList.lua");
+        File.AppendAllText(lua, Environment.NewLine + "RP.Emotes[\"mine\"] = { \"my_dict\", \"my_dict_clip\", \"Mine\" }" + Environment.NewLine);
+        Directory.CreateDirectory(Path.Combine(folder, "stream"));
+        File.WriteAllBytes(Path.Combine(folder, "stream", "my_dict.ycd"), new byte[] { 1, 2, 3 });
+
+        var response = await host.Client.PostAsync("/api/resources/edited/rescan", null);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(folder, (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("folder").GetString());
+        var after = await host.Client.GetFromJsonAsync<JsonElement>("/api/catalog");
+        Assert.Equal(count + 1, after.GetProperty("entries").GetArrayLength());
+        Assert.True(after.GetProperty("revision").GetInt32() > before.GetProperty("revision").GetInt32());
+        var mine = after.GetProperty("entries").EnumerateArray().Single(e => e.GetProperty("command").GetString() == "mine");
+        Assert.True(mine.GetProperty("custom").GetBoolean());
+
+        Assert.Equal(HttpStatusCode.NotFound, (await host.Client.PostAsync("/api/resources/nope/rescan", null)).StatusCode);
+        // GitHub resources can be rescanned too (no download involved)
+        var github = await host.Client.PostAsJsonAsync("/api/resources", new { origin = "github", repository = "someone/fake-emotes", @ref = "main" });
+        var id = (await github.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString();
+        await WaitForJobAsync(host.Client, id!, "done");
+        Assert.Equal(HttpStatusCode.OK, (await host.Client.PostAsync($"/api/resources/{id}/rescan", null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task FolderWatcherRescansAfterAFileChange()
+    {
+        await using var host = await TestHost.StartAsync();
+        var folder = TestHost.WriteRpEmotesResource(host.DataDirectory, "watched");
+        Assert.Equal(HttpStatusCode.OK, (await host.Client.PostAsJsonAsync("/api/resources", new { origin = "folder", path = folder })).StatusCode);
+        var watcher = host.App.Services.GetRequiredService<FolderWatcher>();
+        Assert.Equal(new[] { "watched" }, watcher.Watched);
+        int count = (await host.Client.GetFromJsonAsync<JsonElement>("/api/catalog")).GetProperty("entries").GetArrayLength();
+
+        var rescanned = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        watcher.Rescanned += id => rescanned.TrySetResult(id);
+        File.AppendAllText(Path.Combine(folder, "client", "AnimationList.lua"), Environment.NewLine + "RP.Emotes[\"later\"] = { \"later_dict\", \"later_clip\", \"Later\" }" + Environment.NewLine);
+        var id = await rescanned.Task.WaitAsync(FolderWatcher.Debounce + TimeSpan.FromSeconds(10));
+        Assert.Equal("watched", id);
+        Assert.Equal(count + 1, (await host.Client.GetFromJsonAsync<JsonElement>("/api/catalog")).GetProperty("entries").GetArrayLength());
+
+        // switching the watch off drops the watcher; a disabled resource is not watched either
+        var settings = await host.Client.GetFromJsonAsync<JsonElement>("/api/settings");
+        var patched = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(settings.GetRawText())!;
+        patched["watchFolders"] = JsonSerializer.SerializeToElement(false);
+        Assert.Equal(HttpStatusCode.OK, (await host.Client.PutAsJsonAsync("/api/settings", patched)).StatusCode);
+        Assert.Empty(watcher.Watched);
+    }
 }

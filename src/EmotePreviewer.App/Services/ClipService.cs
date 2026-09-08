@@ -73,7 +73,8 @@ public sealed class ClipService
 
     IClipDictionary GetLooseDictionary(string path)
     {
-        var key = "file:" + path.ToLowerInvariant();
+        // The size and mtime are part of the key, so a .ycd rewritten in place is read again instead of served stale.
+        var key = "file:" + path.ToLowerInvariant() + "|" + FileStamp(path);
         return Cached(key, () =>
         {
             if (!File.Exists(path)) throw new ClipServiceException("DICTIONARY_NOT_FOUND", $"The .ycd file {path} no longer exists");
@@ -210,5 +211,31 @@ public sealed class ClipService
             _dicts.Clear();
             _baked.Clear();
         }
+    }
+
+    /// <summary>Drops the cached dictionaries and baked clips that were read from files under <paramref name="folder"/>. Returns how many entries went.</summary>
+    public int Invalidate(string folder)
+    {
+        var prefix = Path.GetFullPath(folder).TrimEnd('\\', '/').ToLowerInvariant() + Path.DirectorySeparatorChar;
+        int removed = 0;
+        lock (_sync)
+        {
+            removed += RemoveWhere(_dicts, e => e.key.StartsWith("file:", StringComparison.Ordinal) && e.key.AsSpan(5).StartsWith(prefix));
+            removed += RemoveWhere(_baked, e => !e.key.StartsWith("rpf:", StringComparison.Ordinal) && e.key.ToLowerInvariant().StartsWith(prefix, StringComparison.Ordinal));
+        }
+        return removed;
+    }
+
+    static int RemoveWhere<T>(LinkedList<T> list, Func<T, bool> predicate)
+    {
+        int removed = 0;
+        var node = list.First;
+        while (node != null)
+        {
+            var next = node.Next;
+            if (predicate(node.Value)) { list.Remove(node); removed++; }
+            node = next;
+        }
+        return removed;
     }
 }

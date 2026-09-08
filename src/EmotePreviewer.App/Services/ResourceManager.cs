@@ -191,6 +191,22 @@ public sealed class ResourceManager
         Start(setting.Id, setting.Repository, setting.Ref ?? "main");
     }
 
+    /// <summary>
+    /// Re-reads a resource's files without downloading anything: the catalog is rebuilt and every dictionary, baked clip and
+    /// mesh read from under the resource folder is dropped, so a .ycd or .lua rewritten in place shows up. Works for folder
+    /// and GitHub resources alike. Returns the folder that was rescanned.
+    /// </summary>
+    public string Rescan(string id)
+    {
+        var setting = _settings.Current.Resources.FirstOrDefault(r => string.Equals(r.Id, id, StringComparison.OrdinalIgnoreCase))
+            ?? throw new ResourceException("RESOURCE_NOT_FOUND", $"No resource '{id}'", 404);
+        var folder = setting.Origin == "github" ? ResourceFolder(setting.Id) : setting.Path;
+        int dropped = _clips.Invalidate(folder) + _meshes.Invalidate(folder);
+        _catalog.Rebuild();
+        _logger.LogInformation("Resource {Id} rescanned ({Dropped} cached items dropped)", id, dropped);
+        return folder;
+    }
+
     void Start(string id, string repository, string branch)
     {
         var cts = new CancellationTokenSource();

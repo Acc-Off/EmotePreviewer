@@ -102,4 +102,22 @@ public sealed class MeshService
     {
         lock (_sync) _cache.Clear();
     }
+
+    /// <summary>Drops the cached meshes read from .ydr files under <paramref name="folder"/>.</summary>
+    public int Invalidate(string folder)
+    {
+        var prefix = "file:" + Path.GetFullPath(folder).TrimEnd('\\', '/').ToLowerInvariant() + Path.DirectorySeparatorChar;
+        int removed = 0;
+        lock (_sync)
+        {
+            var node = _cache.First;
+            while (node != null)
+            {
+                var next = node.Next;
+                if (node.Value.key.StartsWith(prefix, StringComparison.Ordinal)) { _cache.Remove(node); removed++; }
+                node = next;
+            }
+        }
+        return removed;
+    }
 }

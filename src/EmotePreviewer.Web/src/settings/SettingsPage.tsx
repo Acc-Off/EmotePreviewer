@@ -312,6 +312,11 @@ function ResourcesSection({ settings, onSave, onToast }: ResourcesSectionProps) 
                       {t("settings.resources.refresh")}
                     </button>
                   )}
+                  {index >= 0 && (
+                    <button type="button" disabled={busy} title={t("settings.resources.rescanHint")} onClick={() => void api.rescanResource(r.id).then(refresh).catch(fail)}>
+                      {t("settings.resources.rescan")}
+                    </button>
+                  )}
                   <button type="button" disabled={busy} onClick={() => void api.removeResource(r.id).then(after).catch(fail)}>
                     {t("common.remove")}
                   </button>
@@ -326,6 +331,10 @@ function ResourcesSection({ settings, onSave, onToast }: ResourcesSectionProps) 
           {t("settings.resources.addFolder")}
         </button>
       </div>
+      <label className="check" title={t("settings.resources.watchHint")}>
+        <input type="checkbox" checked={settings.watchFolders ?? true} onChange={(e) => void onSave({ ...settings, watchFolders: e.target.checked })} />
+        {t("settings.resources.watch")}
+      </label>
       {templates.some((x) => !x.installed) && (
         <div className="templates">
           <p className="hint">{t("settings.resources.templates")}</p>

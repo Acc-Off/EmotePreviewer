@@ -116,6 +116,8 @@ public static class AppHost
         builder.Services.AddSingleton<FolderDialog>();
         builder.Services.AddSingleton<ListenerInfo>();
         builder.Services.AddHostedService<StartupService>();
+        builder.Services.AddSingleton<FolderWatcher>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<FolderWatcher>());
 
         builder.Services.Configure<KestrelServerOptions>(kestrel =>
         {

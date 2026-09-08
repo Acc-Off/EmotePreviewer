@@ -70,7 +70,7 @@ EmotePreviewer.exe [--port 20300] [--data-dir <dir>] [--gta <dir>] [--keys <dir>
 
 ### API の概要
 
-すべて `/api/` 配下。`GET /api/status`（状態）、`GET /api/events`（SSE: `status` / `catalog` / `resource`）、`GET /api/catalog`（共有エモートは `partner` に相手の id・クリップ・主から見た配置を含む）、`GET/PUT /api/settings`、`GET /api/diagnostics`、`/api/resources`（GET / POST / DELETE / `refresh`）、`GET /api/skeleton?ped=`、`GET /api/emotes/{id}/clip` と `clip.bin`（焼き込み済みのローカル変換、float32 の `[frame][bone] × (px,py,pz,qx,qy,qz,qw)`、ルートモーションは別ブロック。`?ped=` で焼き込み先のスケルトンを選ぶ）、`GET /api/dictionaries/{name}/clips`、`GET /api/clips/{dict}/{clip}.bin`、`GET /api/props/{model}.bin`（小道具メッシュ）、`GET /api/peds` と `GET /api/peds/{ped}`（ped 一覧と既定部位）、`GET /api/ped/{ped}/{component}.bin`（ped のスキンメッシュ）、`GET /api/textures/{prop|ped}/{name}/{texture}.dds`（ディフューズテクスチャ）。詳細は [app-design.ja.md](app-design.ja.md)。
+すべて `/api/` 配下。`GET /api/status`（状態）、`GET /api/events`（SSE: `status` / `catalog` / `resource`）、`GET /api/catalog`（共有エモートは `partner` に相手の id・クリップ・主から見た配置を含む）、`GET/PUT /api/settings`、`GET /api/diagnostics`、`/api/resources`（GET / POST / DELETE / `refresh` は GitHub リソースの再ダウンロード / `rescan` はリソースのファイルの読み直し: カタログを再構築し、そのフォルダ配下から読んだ辞書・焼き込み済みクリップ・メッシュのキャッシュを捨てる。フォルダリソースは `FileSystemWatcher` で `.ycd` / `.ydr` / `.lua` の変更を監視し、最後の変更から 1.5 秒後に自動で再スキャンする。設定の `watchFolders` で止められる）、`GET /api/skeleton?ped=`、`GET /api/emotes/{id}/clip` と `clip.bin`（焼き込み済みのローカル変換、float32 の `[frame][bone] × (px,py,pz,qx,qy,qz,qw)`、ルートモーションは別ブロック。`?ped=` で焼き込み先のスケルトンを選ぶ）、`GET /api/dictionaries/{name}/clips`、`GET /api/clips/{dict}/{clip}.bin`、`GET /api/props/{model}.bin`（小道具メッシュ）、`GET /api/peds` と `GET /api/peds/{ped}`（ped 一覧と既定部位）、`GET /api/ped/{ped}/{component}.bin`（ped のスキンメッシュ）、`GET /api/textures/{prop|ped}/{name}/{texture}.dds`（ディフューズテクスチャ）。詳細は [app-design.ja.md](app-design.ja.md)。
 
 ## DevTools
 
@@ -81,6 +81,8 @@ dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- regr
 dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- coverage     # 辞書＋クリップが実在する件数
 dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- bake         # 全件を焼き込んで例外を数える
 dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- find <名前>  # 辞書／yft がどのアーカイブにあるか
+dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- skeleton <yft名> [out.json]  # スケルトン定義（親子・タグ・ローカル変換）を書き出す
+dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- yft <yft名> [out.yft]  # GTAアーカイブから .yft を書き出す
 dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- pose <dict> <clip> [t]   # 時刻 t のボーン座標
 dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- mesh <model...>  # 小道具メッシュの抽出統計
 dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- props [--scan] [--textures]  # カタログが参照する小道具モデル（とテクスチャ）の解決率

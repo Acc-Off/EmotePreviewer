@@ -59,6 +59,7 @@ export const api = {
   addGitHubResource: (repository: string, ref: string | null, id: string | null) =>
     request<{ id: string }>("/api/resources", json("POST", { origin: "github", repository, ref, id })),
   refreshResource: (id: string) => request<{ id: string }>(`/api/resources/${encodeURIComponent(id)}/refresh`, { method: "POST" }),
+  rescanResource: (id: string) => request<{ id: string; folder: string }>(`/api/resources/${encodeURIComponent(id)}/rescan`, { method: "POST" }),
   removeResource: (id: string) => request<{ id: string }>(`/api/resources/${encodeURIComponent(id)}`, { method: "DELETE" }),
   setResourceEnabled: (id: string, enabled: boolean) =>
     request<{ id: string; enabled: boolean }>(`/api/resources/${encodeURIComponent(id)}/enabled`, json("POST", { enabled })),

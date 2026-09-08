@@ -30,7 +30,7 @@ type ClipState = { kind: "idle" } | { kind: "loading" } | { kind: "ready"; meta:
  * Drives one slot of the controller from a spec: loads the ped's skeleton (from the server's cache before indexing,
  * from the game data afterwards), then the mannequin, the props and the clip. A null spec empties the slot.
  */
-function useRigSlot(controllerRef: React.RefObject<ViewerController | null>, slot: Slot, spec: SlotSpec | null, gtaReady: boolean, statusSkeleton: string | null, showMesh: boolean) {
+function useRigSlot(controllerRef: React.RefObject<ViewerController | null>, slot: Slot, spec: SlotSpec | null, gtaReady: boolean, statusSkeleton: string | null, showMesh: boolean, catalogRevision: number) {
   const [rigPed, setRigPed] = useState<string | null>(null);
   const [skeletonError, setSkeletonError] = useState<string | null>(null);
   const [clipState, setClipState] = useState<ClipState>({ kind: "idle" });
@@ -154,6 +154,28 @@ function useRigSlot(controllerRef: React.RefObject<ViewerController | null>, slo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controllerRef, slot, clipKey, skeletonReady, delay, loop]);
 
+  // A rebuilt catalog (a rescan, possibly automatic after a converter wrote the file) may mean the clip on screen was
+  // rewritten: re-fetch its meta, and when the ETag differs swap the data in place, keeping the playhead. An unchanged
+  // clip costs one small request; the .bin comes from the browser cache.
+  const loadedETag = useRef<string | null>(null);
+  useEffect(() => {
+    loadedETag.current = clipState.kind === "ready" ? clipState.meta.eTag : null;
+  }, [clipState]);
+  useEffect(() => {
+    if (!spec?.clip || !skeletonReady || loadedETag.current === null) return;
+    const abort = new AbortController();
+    const load = spec.clip.load;
+    load(abort.signal)
+      .then((clip: LoadedClip) => {
+        if (abort.signal.aborted || clip.meta.eTag === loadedETag.current) return;
+        controllerRef.current?.replaceClip(slot, clip);
+        setClipState({ kind: "ready", meta: clip.meta });
+      })
+      .catch(() => undefined);
+    return () => abort.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogRevision]);
+
   return { rigPed, skeletonReady, skeletonError, clipState, meshState };
 }
 
@@ -229,8 +251,9 @@ export function Viewer() {
         }
       : null;
 
-  const main = useRigSlot(controllerRef, "main", mainSpec, gtaReady, statusSkeleton, showMesh);
-  const second = useRigSlot(controllerRef, "partner", partnerSpec, gtaReady, statusSkeleton, showMesh);
+  const catalogRevision = useAppStore((s) => s.catalogRevision);
+  const main = useRigSlot(controllerRef, "main", mainSpec, gtaReady, statusSkeleton, showMesh, catalogRevision);
+  const second = useRigSlot(controllerRef, "partner", partnerSpec, gtaReady, statusSkeleton, showMesh, catalogRevision);
 
   // Placement follows the selected entry; the controller applies it once both rigs exist.
   const placement = partnerActive ? (partner?.placement ?? null) : null;

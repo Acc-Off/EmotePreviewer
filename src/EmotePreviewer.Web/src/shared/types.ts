@@ -147,6 +147,8 @@ export interface AppSettings {
   /** Ped of the second character of shared emotes; null = the same as `ped`. */
   partnerPed: string | null;
   viewer: ViewerSettings;
+  /** Watch folder resources for changed .ycd / .lua / .ydr files and rescan them automatically. */
+  watchFolders?: boolean;
 }
 
 export interface DiagnosticsDto {

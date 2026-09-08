@@ -145,6 +145,15 @@ export class ViewerController {
     this.dirty = true;
   }
 
+  /** Replaces a slot's clip data without touching the timeline (a rewritten .ycd picked up by a rescan): the playhead and play state stay. */
+  replaceClip(slot: Slot, clip: LoadedClip): void {
+    const rigSlot = this.slots[slot];
+    if (!rigSlot) return;
+    rigSlot.playback.load(clip);
+    this.updateDuration();
+    this.dirty = true;
+  }
+
   clearClip(slot: Slot): void {
     const rigSlot = this.slots[slot];
     if (!rigSlot) return;

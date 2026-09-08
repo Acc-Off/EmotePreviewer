@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using EmotePreviewer.Core.Adapters.GtaToolkit;
 using EmotePreviewer.Core.Catalog;
 using EmotePreviewer.Core.Gta;
@@ -11,8 +12,11 @@ using EmotePreviewer.Fixtures;
 //   devtools regression [out.json.gz] [builtin] [custom] [seed]   generate the decoder regression fixture (default tests/fixtures/)
 //   devtools coverage [limit]                                     how many catalog entries resolve to a real dictionary + clip
 //   devtools find <dictionary | yft name>                         which archive a dictionary / skeleton resolves to
+//   devtools skeleton <yft name> [out.json]                       dump a skeleton definition as JSON
+//   devtools yft <yft name> [out.yft]                             extract a skeleton fragment from GTA archives
 //   devtools bake [limit]                                         bake every previewable entry with ClipBaker and count failures
 //   devtools pose <dictionary> <clip> [t]                         world-space bone positions at time t (compare with the viewer)
+//   devtools axes <dictionary> <clip> <bone> [bone...]            rotation-axis statistics of a bone's local rotation (relative to bind) over a clip
 //   devtools mesh <model> [more models...]                        extract prop / ped drawables and print their statistics
 //   devtools props [limit] [--textures]                           check how many prop models referenced by the catalog resolve (and their diffuse textures)
 //   devtools peds [filter]                                        list the ped models in the game data (name, storage form, category)
@@ -444,6 +448,53 @@ switch (cmd)
                 Console.WriteLine($"  {index,3} {name,-28} tag={tag,-6} flags=0x{(ushort)flag:X4} {flag}");
         break;
     }
+    case "skeleton":
+    {
+        // Complete skeleton dump for retargeting experiments and external tooling.
+        if (rest.Count < 2) return Usage();
+        using var gd = OpenGta();
+        var skel = gd.LoadSkeleton(rest[1]) ?? throw new FileNotFoundException(rest[1] + ".yft not found");
+        var dump = new
+        {
+            name = skel.Name,
+            source = gd.FindSkeletonPath(rest[1]),
+            boneCount = skel.Bones.Count,
+            bones = skel.Bones.Select(b => new
+            {
+                b.Index,
+                b.Tag,
+                b.Name,
+                b.ParentIndex,
+                translation = new[] { b.Translation.X, b.Translation.Y, b.Translation.Z },
+                rotation = new[] { b.Rotation.X, b.Rotation.Y, b.Rotation.Z, b.Rotation.W },
+                scale = new[] { b.Scale.X, b.Scale.Y, b.Scale.Z },
+                dofs = b.Dofs.ToString(),
+                dofMask = (ushort)b.Dofs,
+            })
+        };
+        var json = JsonSerializer.Serialize(dump, new JsonSerializerOptions { WriteIndented = true });
+        var outPath = rest.ElementAtOrDefault(2);
+        if (outPath is null)
+        {
+            Console.WriteLine(json);
+        }
+        else
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath))!);
+            File.WriteAllText(outPath, json);
+            Console.WriteLine("wrote " + outPath);
+        }
+        break;
+    }
+    case "yft":
+    {
+        if (rest.Count < 2) return Usage();
+        using var gd = OpenGta();
+        var outPath = rest.ElementAtOrDefault(2) ?? (rest[1] + ".yft");
+        if (!gd.ExportSkeleton(rest[1], outPath)) throw new FileNotFoundException(rest[1] + ".yft not found");
+        Console.WriteLine($"wrote {outPath} from {gd.FindSkeletonPath(rest[1])}");
+        break;
+    }
     case "pedinfo":
     {
         if (rest.Count < 2) return Usage();
@@ -579,6 +630,43 @@ switch (cmd)
         }
         break;
     }
+    case "axes":
+    {
+        // devtools axes <dictionary> <clip> <bone> [bone...]   rotation-axis statistics of a bone's local rotation relative to its bind pose
+        if (rest.Count < 4) return Usage();
+        var cat = BuildCatalog();
+        using var gd = OpenGta();
+        var skel = gd.LoadSkeleton(skeletonName) ?? throw new FileNotFoundException(skeletonName + ".yft not found");
+        var dict = (cat.CustomYcds.TryGetValue(rest[1], out var loose) ? gd.LoadLooseClipDictionary(loose) : gd.LoadClipDictionary(rest[1])) ?? throw new FileNotFoundException("dictionary not found: " + rest[1]);
+        var clip = dict.FindClip(rest[2]) ?? throw new KeyNotFoundException("clip not found: " + rest[2]);
+        var sample = new ClipSample();
+        Console.WriteLine($"{dict.Name} / {clip.Name}: duration={clip.Duration:F3}s");
+        foreach (var boneName in rest.Skip(3))
+        {
+            var bone = skel.Bones.FirstOrDefault(b => b.Name.Equals(boneName, StringComparison.OrdinalIgnoreCase)) ?? throw new KeyNotFoundException("bone not found: " + boneName);
+            var bindInv = System.Numerics.Quaternion.Inverse(bone.Rotation);
+            int n = 0, nearX = 0, nearY = 0, nearZ = 0; var mean = System.Numerics.Vector3.Zero; double maxDeg = 0;
+            var cos25 = Math.Cos(Math.PI * 25 / 180);
+            for (double t = 0; t < clip.Duration; t += 1.0 / 30)
+            {
+                sample.Clear();
+                clip.Sample(t, sample);
+                if (!sample.Rotations.TryGetValue(bone.Tag, out var q)) continue;
+                var rel = System.Numerics.Quaternion.Normalize(bindInv * q);
+                if (rel.W < 0) rel = -rel;
+                var ang = 2 * Math.Acos(Math.Clamp(rel.W, -1, 1)) * 180 / Math.PI;
+                if (ang < 25) continue;
+                var s = Math.Sqrt(Math.Max(1e-12, 1 - rel.W * rel.W));
+                var ax = new System.Numerics.Vector3(rel.X, rel.Y, rel.Z) / (float)s;
+                n++; mean += ax; maxDeg = Math.Max(maxDeg, ang);
+                if (Math.Abs(ax.X) > cos25) nearX++; if (Math.Abs(ax.Y) > cos25) nearY++; if (Math.Abs(ax.Z) > cos25) nearZ++;
+            }
+            if (n == 0) { Console.WriteLine($"  {bone.Name,-18} no rotation > 25 deg (bind rot {bone.Rotation})"); continue; }
+            mean /= n;
+            Console.WriteLine($"  {bone.Name,-18} n={n,4} mean axis=({mean.X,5:F2},{mean.Y,5:F2},{mean.Z,5:F2}) max={maxDeg,4:F0} deg  nearX={100.0 * nearX / n,3:F0}% nearY={100.0 * nearY / n,3:F0}% nearZ={100.0 * nearZ / n,3:F0}%  bind rot=({bone.Rotation.X:F3},{bone.Rotation.Y:F3},{bone.Rotation.Z:F3},{bone.Rotation.W:F3})");
+        }
+        break;
+    }
     case "find":
     {
         if (rest.Count < 2) return Usage();
@@ -598,7 +686,7 @@ return 0;
 
 int Usage()
 {
-    Console.Error.WriteLine("usage: devtools <regression | coverage | find | bake | pose | mesh | props | ped | walks | clipsets | tex | pedtex | ytd | ydd | missing | peds | pedinfo | dds | animals | shared> [args] [--data <folder>] [--gta <folder>] [--keys <folder>]");
+    Console.Error.WriteLine("usage: devtools <regression | coverage | find | skeleton | yft | bones | bake | pose | axes | mesh | props | ped | walks | clipsets | tex | pedtex | ytd | ydd | missing | peds | pedinfo | dds | animals | shared> [args] [--data <folder>] [--gta <folder>] [--keys <folder>]");
     return 64;
 }
 

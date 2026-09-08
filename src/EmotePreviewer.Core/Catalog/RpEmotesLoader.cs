@@ -14,7 +14,13 @@ public static class RpEmotesLoader
         lua.DoFile(Path.Combine(resourceRoot, "types.lua"));
         lua.DoFile(Path.Combine(resourceRoot, "client", "AnimationList.lua"));
         var custom = Path.Combine(resourceRoot, "client", "AnimationListCustom.lua");
-        if (File.Exists(custom)) lua.DoFile(custom);
+        if (File.Exists(custom))
+        {
+            lua.DoFile(custom);
+            // The file keeps its entries in a local CustomDP table; the resource merges them into RP by calling this
+            // function from EmoteMenu.lua. Do the same, otherwise add-on emotes never reach the catalog.
+            if (lua["LoadAddonEmotes"] is LuaFunction merge) merge.Call();
+        }
 
         var rp = Table(lua["RP"]) ?? throw new InvalidDataException("RP table not found");
         var result = new List<EmoteEntry>();

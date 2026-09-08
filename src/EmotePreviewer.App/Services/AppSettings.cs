@@ -15,6 +15,8 @@ public sealed class AppSettings
     /// <summary>Ped for the second character of shared emotes; null plays the partner on <see cref="Ped"/> too.</summary>
     public string? PartnerPed { get; set; }
     public ViewerSettings Viewer { get; set; } = new();
+    /// <summary>Watch folder resources for changed .ycd / .lua / .ydr files and rescan them automatically.</summary>
+    public bool WatchFolders { get; set; } = true;
 
     public AppSettings Clone() => new()
     {
@@ -24,6 +26,7 @@ public sealed class AppSettings
         Ped = Ped,
         PartnerPed = PartnerPed,
         Viewer = Viewer.Clone(),
+        WatchFolders = WatchFolders,
     };
 }
 

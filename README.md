@@ -21,6 +21,7 @@ EmotePreviewer reads the emote definitions of [rpemotes-reborn](https://github.c
 - **Walk styles** are resolved through the game's clip set table and play their walk cycle. Scenarios and facial expressions are listed with a reason why they cannot be previewed.
 - **Pick any clip of a dictionary.** When you want to see the other clips next to an emote's, choose one from the dictionary without leaving the viewer.
 - **Resources from GitHub.** Fetch and update rpemotes-reborn / scully_emotemenu from the settings page, or add a local folder.
+- **Made for editing a resource.** Folder resources are watched: a `.ycd` or Lua file you add or overwrite is picked up a moment later, and the clip on screen is swapped in place without losing the playhead. A **Rescan** button does the same on demand.
 - **Japanese and English UI, light and dark theme.** The UI runs in your normal browser (Edge, Chrome, …) and talks only to `127.0.0.1`.
 - **Read-only.** Game data is read from your installation and never written, exported or redistributed.
 

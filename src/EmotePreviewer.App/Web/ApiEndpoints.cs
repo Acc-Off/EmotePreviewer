@@ -93,6 +93,12 @@ public static class ApiEndpoints
             return Results.Json(new { id, started = true }, AppHost.Json, statusCode: StatusCodes.Status202Accepted);
         }));
 
+        api.MapPost("/resources/{id}/rescan", (string id, ResourceManager resources) => GuardResource(() =>
+        {
+            var folder = resources.Rescan(id);
+            return Results.Json(new { id, folder }, AppHost.Json);
+        }));
+
         api.MapPost("/resources/{id}/enabled", (string id, EnableResourceRequest request, ResourceManager resources) => GuardResource(() =>
             resources.SetEnabled(id, request.Enabled)
                 ? Results.Json(new { id, enabled = request.Enabled }, AppHost.Json)

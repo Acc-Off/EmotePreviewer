@@ -52,6 +52,47 @@ public sealed class CatalogBuilderTests : IDisposable
     }
 
     [Fact]
+    public void AddOnEmotesFromAnimationListCustomJoinTheCatalog()
+    {
+        var rp = WriteRpEmotes("rp", """
+            RP = {}
+            RP.Dances = { ["builtin"] = { "dict@builtin", "clip", "Built in" } }
+            RP.Emotes = {}
+            """, "bnr_dance_short");
+        // Same shape as the file rpemotes-reborn ships: a local table plus the merge function EmoteMenu.lua calls.
+        File.WriteAllText(Path.Combine(rp, "client", "AnimationListCustom.lua"), """
+            local CustomDP = {}
+            CustomDP.Dances = {
+                ["bnrdance"] = { "bnr_dance_short", "bnr_dance_short_clip", "BNR Dance Short", AnimationOptions = { EmoteLoop = true } },
+            }
+            CustomDP.Emotes = {}
+            CustomDP.NotACategory = { ["x"] = { "d", "c", "X" } }
+            function LoadAddonEmotes()
+                assert(CustomDP ~= nil, 'Addon emotes can only be loaded once')
+                for arrayName, array in pairs(CustomDP) do
+                    if RP[arrayName] then
+                        for emoteName, emoteData in pairs(array) do
+                            RP[arrayName][emoteName] = emoteData
+                        end
+                    end
+                end
+                CustomDP = nil
+            end
+            """, Encoding.UTF8);
+
+        var catalog = CatalogBuilder.Build(new[] { new ResourceSource("rp", rp) });
+
+        Assert.Equal(2, catalog.Entries.Count);
+        var dance = catalog.FindById("rp/Dances/bnrdance");
+        Assert.NotNull(dance);
+        Assert.Equal("bnr_dance_short", dance!.Dictionary);
+        Assert.Equal("bnr_dance_short_clip", dance.Clip);
+        Assert.True(dance.Loop);
+        Assert.True(dance.IsCustom);
+        Assert.Equal(Path.Combine(rp, "stream", "bnr_dance_short.ycd"), dance.CustomYcdPath);
+    }
+
+    [Fact]
     public void MakeIdProducesUrlSafeNames()
     {
         Assert.Equal("rpemotes-reborn", ResourceSource.MakeId("RPEmotes-Reborn"));
