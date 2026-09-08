@@ -95,6 +95,10 @@ ped と相手の ped は設定画面で選びます（検索でき、カテゴ�
 
 コマンドラインオプション（`--port`、`--data-dir`、`--gta`、`--keys`、`--no-browser`、`--app`）は[開発ガイド](Docs/development.ja.md)に書いてあります。
 
+## 自作エモート
+
+[MotionConvertToEmote](https://github.com/Acc-Off/MotionConvertToEmote) は、モーションキャプチャ（BVH）や MMD モーション（VMD）を rpemotes-reborn / scully_emotemenu 用の `.ycd` に変換するツールです。変換したクリップを EmotePreviewer が見ているリソースのフォルダに置けば一覧に出るので、サーバーに載せる前に確認できます。
+
 ## 仕組み
 
 exe は小さなローカル Web サーバーです。起動時にリソースの Lua データを解析してカタログを作り、GTA V の RPF アーカイブ（本体、`update.rpf`、DLC パックをゲームと同じ読み込み順で）を索引します。エモートを選ぶと、クリップをデコードして選択中の ped のスケルトン向けにボーンごとの変換に焼き込み、ブラウザに送って three.js で再生します。小道具と相手の ped は、ゲームと同じオフセットと回転順でボーンに取り付けるので、見えているものはリソースがゲーム内で行うことそのものです。

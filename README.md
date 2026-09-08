@@ -95,6 +95,10 @@ With both default resources loaded, about 6,200 of the 6,350 entries that name a
 
 Command-line options (`--port`, `--data-dir`, `--gta`, `--keys`, `--no-browser`, `--app`) are described in the [development guide](Docs/development.md).
 
+## Making your own emotes
+
+[MotionConvertToEmote](https://github.com/Acc-Off/MotionConvertToEmote) turns motion capture (BVH) and MMD motions (VMD) into `.ycd` clips for rpemotes-reborn and scully_emotemenu. Drop the clip into a resource folder EmotePreviewer watches, and it shows up in the list for checking before you put it on a server.
+
 ## How it works
 
 The executable is a small local web server. On start it parses the Lua data files of the resources into a catalog and indexes the RPF archives of your GTA V (base game, `update.rpf` and the DLC packs in the game's own load order). When you select an emote, the clip is decoded and baked into per-bone transforms for the chosen ped's skeleton and sent to the browser, where three.js plays it. Props and the partner ped are attached to bones with the same offsets and rotation order the game uses, so what you see is what the resource does in-game.
