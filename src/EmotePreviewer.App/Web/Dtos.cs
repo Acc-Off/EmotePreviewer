@@ -231,7 +231,8 @@ public sealed record ResourcesDto(IReadOnlyList<ResourceItemDto> Resources, IRea
 /// <param name="Shader">Shader name when known (<c>ped</c>, <c>ped_hair_spiked</c>, <c>normal_spec</c> …).</param>
 /// <param name="Cutout">Whether the shader discards by diffuse alpha; null for unknown shaders (the browser then guesses from the texture format).</param>
 /// <param name="Hidden">Geometry the game keeps out of the colour pass (hair hulls of the secondary hair pass); the browser does not draw it.</param>
-public sealed record MeshSubMeshDto(int IndexStart, int IndexCount, uint ShaderHash, string? Diffuse, string? Shader, bool? Cutout, bool Hidden);
+/// <param name="Cloth">Geometry the game shapes with its cloth simulation (jackets of the story peds); the file only holds a spread-out starting shape, so the viewer can hide it.</param>
+public sealed record MeshSubMeshDto(int IndexStart, int IndexCount, uint ShaderHash, string? Diffuse, string? Shader, bool? Cutout, bool Hidden, bool Cloth);
 
 /// <summary>A diffuse texture that can be fetched as <c>/api/textures/{textureScope}/{name}.dds?v={eTag}</c>.</summary>
 /// <param name="Format"><c>bc1</c> / <c>bc2</c> / <c>bc3</c> / <c>bc7</c> / <c>rgba8</c> …</param>

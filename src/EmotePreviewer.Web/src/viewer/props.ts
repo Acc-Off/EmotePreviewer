@@ -28,7 +28,7 @@ export function buildGeometry(loaded: LoadedMesh): THREE.BufferGeometry {
   // One group per sub-mesh so each can carry its own (textured) material; a single material ignores the index.
   // Hidden sub-meshes get no group and are therefore never drawn.
   meta.subMeshes.forEach((sub, i) => {
-    if (!sub.hidden) geometry.addGroup(sub.indexStart, sub.indexCount, i);
+    if (!sub.hidden && !sub.cloth) geometry.addGroup(sub.indexStart, sub.indexCount, i);
   });
   if (!meta.hasNormals) geometry.computeVertexNormals();
   geometry.computeBoundingSphere();

@@ -201,6 +201,8 @@ export const en: Record<MessageKey, string> = {
   "viewer.ped.title": "Switch the ped (character model)",
   "viewer.ped.animal": "animal",
   "viewer.textures": "Textures",
+  "viewer.cloth": "Cloth",
+  "viewer.cloth.title": "Parts the game shapes with its cloth simulation (the protagonists' jackets). The file only holds their spread-out starting shape, so they are hidden by default",
   "viewer.animalPed": "Animal ped",
   "viewer.animalPed.title": "Play this animal emote on {ped}",
   "viewer.partner": "Partner",

@@ -35,6 +35,7 @@ function useRigSlot(controllerRef: React.RefObject<ViewerController | null>, slo
   const [skeletonError, setSkeletonError] = useState<string | null>(null);
   const [clipState, setClipState] = useState<ClipState>({ kind: "idle" });
   const [meshState, setMeshState] = useState<"none" | "loading" | "ready" | "error">("none");
+  const [hasCloth, setHasCloth] = useState(false);
   const ped = spec?.ped ?? null;
   const skeletonReady = rigPed !== null && ped !== null && rigPed.toLowerCase() === ped.toLowerCase();
 
@@ -84,12 +85,14 @@ function useRigSlot(controllerRef: React.RefObject<ViewerController | null>, slo
         const ok = loaded.filter((m): m is LoadedMesh => m !== null);
         if (ok.length < loaded.length) meshKey.current = null;
         controllerRef.current?.setPedMesh(slot, ok);
+        setHasCloth(ok.some((m) => m.meta.subMeshes.some((s) => s.cloth)));
         setMeshState(ok.length > 0 ? "ready" : "error");
       })
       .catch(() => {
         if (abort.signal.aborted) return;
         meshKey.current = null;
         controllerRef.current?.setPedMesh(slot, []);
+        setHasCloth(false);
         setMeshState("error");
       });
     return () => abort.abort();
@@ -176,7 +179,7 @@ function useRigSlot(controllerRef: React.RefObject<ViewerController | null>, slo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalogRevision]);
 
-  return { rigPed, skeletonReady, skeletonError, clipState, meshState };
+  return { rigPed, skeletonReady, skeletonError, clipState, meshState, hasCloth };
 }
 
 /** Canvas, overlay messages and the transport bar. three.js state lives in ViewerController, not in React. */
@@ -197,6 +200,7 @@ export function Viewer() {
   const showProps = settings?.viewer.showProps ?? true;
   const showMesh = settings?.viewer.showMesh ?? false;
   const showTextures = settings?.viewer.showTextures ?? true;
+  const showCloth = settings?.viewer.showCloth ?? false;
   const animalPeds = settings?.viewer.animalPeds ?? true;
   const showPartner = settings?.viewer.showPartner ?? true;
   const gtaReady = status?.gta === "ready";
@@ -225,6 +229,7 @@ export function Viewer() {
   useEffect(() => controllerRef.current?.setPropsVisible(showProps), [showProps]);
   useEffect(() => controllerRef.current?.setMeshVisible(showMesh), [showMesh]);
   useEffect(() => controllerRef.current?.setTextures(showTextures), [showTextures]);
+  useEffect(() => controllerRef.current?.setCloth(showCloth), [showCloth]);
 
   // The main slot: the selected entry (or the manually picked clip of its dictionary), baked for the active ped.
   const mainPlayable = entry !== null && (manualClip !== null || entry.previewable);
@@ -381,6 +386,16 @@ export function Viewer() {
           </button>
           <button type="button" className={showTextures ? "on" : ""} aria-pressed={showTextures} disabled={!gtaReady} onClick={() => setPref({ showTextures: !showTextures })}>
             {t("viewer.textures")}
+          </button>
+          <button
+            type="button"
+            className={showCloth ? "on" : ""}
+            aria-pressed={showCloth}
+            disabled={!gtaReady || !showMesh || !(main.hasCloth || second.hasCloth)}
+            title={t("viewer.cloth.title")}
+            onClick={() => setPref({ showCloth: !showCloth })}
+          >
+            {t("viewer.cloth")}
           </button>
           <button
             type="button"

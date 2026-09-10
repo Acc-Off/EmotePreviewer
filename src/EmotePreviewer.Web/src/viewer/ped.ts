@@ -16,11 +16,12 @@ export class PedMesh {
   private readonly rig: SkeletonRig;
   private readonly textures: TextureCache;
   private readonly material: THREE.MeshStandardMaterial;
-  private readonly meshes: { mesh: THREE.SkinnedMesh; materials: MeshMaterials }[] = [];
+  private readonly meshes: { mesh: THREE.SkinnedMesh; materials: MeshMaterials; meta: LoadedMesh["meta"] }[] = [];
   private skeleton: THREE.Skeleton | null = null;
   private readonly unTheme: () => void;
   private visible = false;
   private textured = true;
+  private cloth = false;
   private abort: AbortController | null = null;
 
   constructor(rig: SkeletonRig, scene: Scene, textures: TextureCache) {
@@ -47,6 +48,7 @@ export class PedMesh {
     for (const component of components) {
       if (!component.meta.skinned) continue;
       const geometry = buildGeometry(component);
+      applyGroups(geometry, component.meta, this.cloth);
       const skinIndex = geometry.getAttribute("skinIndex") as THREE.BufferAttribute;
       const idx = skinIndex.array as Uint16Array;
       for (let i = 0; i < idx.length; i++) if (idx[i] >= boneCount) idx[i] = 0;
@@ -59,8 +61,22 @@ export class PedMesh {
       this.rig.entity.add(mesh);
       mesh.updateMatrixWorld(true);
       mesh.bind(this.skeleton, mesh.matrixWorld);
-      this.meshes.push({ mesh, materials });
+      this.meshes.push({ mesh, materials, meta: component.meta });
     }
+  }
+
+  /** Whether any loaded component has cloth-simulated geometry (so the cloth toggle has something to act on). */
+  get hasCloth(): boolean {
+    return this.meshes.some((m) => m.meta.subMeshes.some((s) => s.cloth));
+  }
+
+  /**
+   * Shows or hides the cloth-simulated sub-meshes. Their file shape is the spread-out state the simulation starts
+   * from (a jacket held open), so they are off by default; the draw groups are rebuilt, which works in both material modes.
+   */
+  setCloth(on: boolean): void {
+    this.cloth = on;
+    for (const m of this.meshes) applyGroups(m.mesh.geometry, m.meta, on);
   }
 
   setVisible(visible: boolean): void {
@@ -92,4 +108,13 @@ export class PedMesh {
     this.unTheme();
     this.material.dispose();
   }
+}
+
+/** Draw groups per sub-mesh: hidden hulls never, cloth only when asked for (each group indexes its material). */
+function applyGroups(geometry: THREE.BufferGeometry, meta: LoadedMesh["meta"], cloth: boolean): void {
+  geometry.clearGroups();
+  meta.subMeshes.forEach((sub, i) => {
+    if (sub.hidden || (sub.cloth && !cloth)) return;
+    geometry.addGroup(sub.indexStart, sub.indexCount, i);
+  });
 }

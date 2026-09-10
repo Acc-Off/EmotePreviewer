@@ -131,6 +131,8 @@ export interface ViewerSettings {
   showMesh: boolean;
   /** Diffuse textures on props and the ped mesh. */
   showTextures: boolean;
+  /** Draw the cloth-simulated parts of ped components (the file only holds their unsimulated starting shape). */
+  showCloth: boolean;
   /** Play animal emotes on their animal ped instead of the configured one. */
   animalPeds: boolean;
   /** Show the other ped of shared emotes. */
@@ -284,6 +286,8 @@ export interface MeshSubMeshDto {
   cutout: boolean | null;
   /** Geometry the game keeps out of the colour pass (hair hulls); not drawn. */
   hidden: boolean;
+  /** Geometry the game shapes with its cloth simulation (story peds' jackets); drawn only with `viewer.showCloth`. */
+  cloth: boolean;
 }
 
 /** A texture fetchable as `/api/textures/{textureScope}/{name}.dds?v={eTag}`. */

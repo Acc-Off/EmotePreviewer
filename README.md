@@ -57,6 +57,7 @@ Quit with Ctrl+C in the console window or **Quit EmotePreviewer** on the setting
 | **Props** | Show the props defined for the emote |
 | **Mesh** | Ped mesh on, stick figure off |
 | **Textures** | Diffuse textures on props and the ped (flat colours when off) |
+| **Cloth** | Parts the game shapes with its cloth simulation (the protagonists' jackets). The file only holds their spread-out starting shape, so they are off by default; enabled only for peds that have such parts |
 | **Animal ped** | Play animal emotes on their animal instead of the configured ped |
 | **Partner** | Show the other ped of a shared emote |
 | **Helper bones** | Include the helper bones (mover, prop, IK, roll and eye-target bones) in the stick figure |

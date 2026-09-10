@@ -148,7 +148,7 @@ public static class ClipEndpoints
     {
         var resolved = textures.ForMesh(r);
         return new MeshMetaDto(r.Model, r.Custom, r.Mesh.VertexCount, r.Mesh.Indices.Length, r.Mesh.Normals != null, r.Mesh.Uvs != null, r.Mesh.IsSkinned,
-            r.Mesh.SubMeshes.Select(s => new MeshSubMeshDto(s.IndexStart, s.IndexCount, s.ShaderHash, s.Diffuse, s.ShaderName, s.Cutout, s.Hidden)).ToList(),
+            r.Mesh.SubMeshes.Select(s => new MeshSubMeshDto(s.IndexStart, s.IndexCount, s.ShaderHash, s.Diffuse, s.ShaderName, s.Cutout, s.Hidden, s.Cloth)).ToList(),
             new[] { r.Mesh.BoundsMin.X, r.Mesh.BoundsMin.Y, r.Mesh.BoundsMin.Z }, new[] { r.Mesh.BoundsMax.X, r.Mesh.BoundsMax.Y, r.Mesh.BoundsMax.Z },
             r.Mesh.Warnings, MeshData.LayoutVersion, r.ETag, r.TextureScope,
             resolved.Select(r => new MeshTextureDto(r.texture.Name, TextureImage.FormatName(r.texture.Image.Format), r.texture.Image.Width, r.texture.Image.Height, r.texture.Image.HasAlpha, r.texture.Image.CanDecode, r.palette, r.texture.ETag)).ToList());

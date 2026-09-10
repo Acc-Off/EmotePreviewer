@@ -52,7 +52,8 @@ public static class MeshExtractor
     }
 
     /// <summary>Extracts the highest LOD of <paramref name="drawable"/>. Unreadable geometries become warnings, not exceptions.</summary>
-    public static MeshData Extract(Drawable drawable, string name)
+    /// <param name="clothSimulated">True when the drawable ships cloth data (<c>.yld</c>); its cloth-shader geometries are then flagged <see cref="SubMesh.Cloth"/>.</param>
+    public static MeshData Extract(Drawable drawable, string name, bool clothSimulated = false)
     {
         var warnings = new List<string>();
         var lod = drawable.LodGroup.LodHigh ?? drawable.LodGroup.LodMedium ?? drawable.LodGroup.LodLow ?? drawable.LodGroup.LodVeryLow ?? drawable.PrimaryLod;
@@ -155,6 +156,7 @@ public static class MeshExtractor
                     (string name, bool embedded)? diffuse = null;
                     bool palette = false;
                     bool hidden = false;
+                    bool cloth = false;
                     if (model.ShaderMapping != null && g < model.ShaderMapping.Count && shaders != null)
                     {
                         var shaderIndex = model.ShaderMapping[g];
@@ -163,16 +165,28 @@ public static class MeshExtractor
                             shaderHash = shaders[shaderIndex].ShaderHash;
                             diffuse = TextureExtractor.Diffuse(shaders[shaderIndex]);
                             palette = TextureExtractor.HasPalette(shaders[shaderIndex]);
-                            hidden = (ShaderNames.Resolve(shaderHash)?.Contains("hair", StringComparison.Ordinal) ?? false)
+                            var shaderName = ShaderNames.Resolve(shaderHash);
+                            hidden = (shaderName?.Contains("hair", StringComparison.Ordinal) ?? false)
                                 && TextureExtractor.NumericParameter(shaders[shaderIndex], TextureExtractor.OrderNumberParam) >= 1f;
+                            cloth = clothSimulated && (shaderName?.Contains("cloth", StringComparison.Ordinal) ?? false);
                         }
                     }
-                    subMeshes.Add(new SubMesh(indexStart, indexCount, shaderHash, diffuse?.name, diffuse?.embedded ?? false, palette, ShaderNames.IsCutout(shaderHash), hidden));
+                    subMeshes.Add(new SubMesh(indexStart, indexCount, shaderHash, diffuse?.name, diffuse?.embedded ?? false, palette, ShaderNames.IsCutout(shaderHash), hidden, cloth));
                 }
             }
         }
 
         if (positions.Count == 0) warnings.Add("no readable geometry");
+        // Ped component drawables (the heads of most peds, every part of a few) embed the skeleton they are skinned to,
+        // often a subset of the ped's, and their blend indices number that skeleton; the tags let the caller translate
+        // them to the ped's .yft skeleton.
+        ushort[]? boneTags = null;
+        var ownBones = drawable.Skeleton?.BoneData?.Bones;
+        if (anySkin && ownBones != null && ownBones.Count > 0)
+        {
+            boneTags = new ushort[ownBones.Count];
+            for (int i = 0; i < ownBones.Count; i++) boneTags[i] = ownBones[i].BoneId;
+        }
         List<TextureImage> embedded;
         try { embedded = TextureExtractor.Embedded(drawable); }
         catch (Exception ex) { embedded = new(); warnings.Add("embedded textures unreadable: " + ex.Message); }
@@ -183,6 +197,7 @@ public static class MeshExtractor
             Normals = anyNormals ? normals.ToArray() : null,
             Uvs = anyUvs ? uvs.ToArray() : null,
             BlendIndices = anySkin ? blendIndices.ToArray() : null,
+            BlendBoneTags = boneTags,
             BlendWeights = anySkin ? blendWeights.ToArray() : null,
             Indices = indices.ToArray(),
             SubMeshes = subMeshes,

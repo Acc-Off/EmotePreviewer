@@ -109,7 +109,7 @@ EmotePreviewer.exe [--port 20300] [--data-dir <dir>] [--gta <dir>] [--keys <dir>
   ],
   "ped": "mp_m_freemode_01",
   "partnerPed": null,
-  "viewer": { "showHelperBones": false, "rootMotion": false, "showProps": true, "showMesh": false, "showTextures": true, "animalPeds": true, "showPartner": true, "theme": "system", "language": "auto" }
+  "viewer": { "showHelperBones": false, "rootMotion": false, "showProps": true, "showMesh": false, "showTextures": true, "showCloth": false, "animalPeds": true, "showPartner": true, "theme": "system", "language": "auto" }
 }
 ```
 
@@ -141,7 +141,7 @@ EmotePreviewer.exe [--port 20300] [--data-dir <dir>] [--gta <dir>] [--keys <dir>
 |---|---|---|
 | GET | `/api/status` | `gta: missingGta / missingKeys / indexing / ready / error`、進捗、索引件数、バージョン |
 | GET | `/api/events` | **SSE**。`status`（GTA 初期化）、`catalog`（カタログ再構築）、`resource`（取得進捗）、`log` |
-| GET / PUT | `/api/settings` | 設定の読み書き。PUT は検証して保存し、GTA や鍵が変わったら初期化をやり直す。`viewer` には `showHelperBones` / `rootMotion` / `showProps` / `showMesh` / `showTextures` / `animalPeds` / `showPartner` / `theme` / `language`。`partnerPed` は共有エモートの 2 体目の ped（null = `ped` と同じ。`ped` と同じ名前は null に正規化）。`ped` の変更は再索引せず `status` を送り直すだけ |
+| GET / PUT | `/api/settings` | 設定の読み書き。PUT は検証して保存し、GTA や鍵が変わったら初期化をやり直す。`viewer` には `showHelperBones` / `rootMotion` / `showProps` / `showMesh` / `showTextures` / `showCloth` / `animalPeds` / `showPartner` / `theme` / `language`。`partnerPed` は共有エモートの 2 体目の ped（null = `ped` と同じ。`ped` と同じ名前は null に正規化）。`ped` の変更は再索引せず `status` を送り直すだけ |
 | GET | `/api/notices` | 埋め込みの `THIRD-PARTY-NOTICES.md` |
 | GET | `/api/diagnostics` | GTA パス、鍵ファイルの有無、索引件数、リソース一覧、バージョン、ログのパス |
 | POST | `/api/dialogs/folder` | サーバー側で `FolderBrowserDialog` を出し、選ばれたパスを返す（STA スレッド）。ブラウザからは実パスが取れないため |
@@ -238,7 +238,8 @@ clip.bin（リトルエンディアン float32 の連結）
 - 小道具の取り付け: `EmoteProp.Bone`（ボーンタグ）と `Placement`（位置 3 + オイラー角 3、度）を DTO に含め、ブラウザ側で該当 `Bone` の子として配置する。rpemotes / scully は `AttachEntityToEntity(..., rotationOrder = 1)`（Y → Z → X）で取り付ける。この順序は**小道具自身の軸**についての回転（内的回転）で、three.js では Euler 順 `YZX`（行列 Ry·Rz·Rx）になる。外的回転と解釈した `XZY` だと口の葉巻が下を向き、scully の傘が前に垂れる。葉巻・傘・ギターで目視確認済み
 - `.bin` のレイアウト: positions (f32 ×3) → normals (f32 ×3、あれば) → uvs (f32 ×2、あれば) → blendIndices (u16 ×4、スキン時) → blendWeights (f32 ×4、スキン時) → indices (u32)。メタに各ブロックの有無と `subMeshes` を持つ
 - カメラの「正面」は ped の顔側。GTA の ped は +Y を向き、Z-up → Y-up の回転で three.js の −Z になるので、正面カメラと初期視点、太陽光は −Z 側に置く（当初 +Z に置いていて背中が見えていた）
-- ped コンポーネントのブレンド重み・骨番号は D3DCOLOR 型。両方をメモリ順で読む（片方だけ BGRA 変換すると対応がずれる）。骨番号はスケルトンの index をそのまま指す
+- ped コンポーネントのブレンド重み・骨番号は D3DCOLOR 型。両方をメモリ順で読む（片方だけ BGRA 変換すると対応がずれる）
+- 骨番号が指す先はドロワブル次第。ドロワブルが自前のスケルトンを内蔵していない（freemode の服など）なら ped の `.yft` の index をそのまま指す。内蔵している場合（多くの ped の `head`、ストーリー主人公 3 人・`cs_wade` / `ig_wade` / `cs_stretch` / `ig_tracydisanto` / `mp_f_deadhooker` の全部位）は**内蔵スケルトンの index** で、内蔵側は `.yft` の部分集合だったり順序が違ったりする。`MeshExtractor` が内蔵スケルトンのボーンタグを `MeshData.BlendBoneTags` に載せ、`PedService` が `MeshData.RemapBones` で `.yft` の同じタグの index に付け替える（ゲームがタグで部位を骨に結ぶのと同じ）。付け替えないと静止姿勢では正しく見えるのにエモートで頂点が別の骨に付いて崩れる。DevTools の `skinbones` で影響のある ped を列挙できる（9 体、タグ未解決 0）。この修正で `MeshData.LayoutVersion` を 2 に上げてブラウザキャッシュを無効化した
 
 ### 4.6 テクスチャ（M7）
 
@@ -250,6 +251,7 @@ clip.bin（リトルエンディアン float32 の連結）
 - サブメッシュごとに `geometry.addGroup(…, index)` を切り、マテリアル配列で貼り分ける。「テクスチャ」トグル（`viewer.showTextures`）は配列と単色マテリアルを差し替えるだけ
 - アルファを切り抜きに使うかは **シェーダ名** で決める（`ShaderNames`: 既知のシェーダ名を joaat ハッシュにして引く。`alpha` / `cutout` / `decal` / `hair` / `glass` / `fur` を含む名前だけ alphaTest）。素の `ped` シェーダは体テクスチャのアルファをスペキュラマスクに使っており（`a_f_m_beach_01` の体は全面 0.4）、テクスチャ形式で判定すると胴体が消える。未知のシェーダは小道具のみ「アルファ付き形式なら切り抜き」に戻す
 - 髪のドロワブルは毛束のカードとは別に、UV を平面投影した低ポリの「殻」ジオメトリを持つ。同じ `ped_hair_spiked` でもシェーダインスタンスが分かれていて、パラメータ `orderNumber`（`0x6063CE32`）が 1（二次パス用）。通常メッシュとして描くと黒いヘルメットのように見えるので、`SubMesh.Hidden` にしてグループを作らない（描かない）
+- 布シミュレーション部位: 主人公 3 人やカットシーン ped（`cs_*`）の上着など約 60 個の部位は `.ydd` と対で `.yld`（クロス辞書）を持ち、ゲーム内では頂点位置を毎フレーム布シミュレーションで決める。`.ydd` の座標は「上着を広げた」開始形状なので、そのまま描くと静止姿勢でも上着が開いて見える。索引で `.yld` の有無（フォルダ型は `<フォルダ>/<ファイル>.yld`、単体型は `<ped>.yld`）を持ち、その ped の `cloth` を含むシェーダ名のサブメッシュを `SubMesh.Cloth` / DTO の `cloth` にする。ビューアは「布」トグル（`viewer.showCloth`、既定オフ）で描画グループに含めるかを切り替える（ボタンは読み込んだ部位に布がある時だけ有効）。`.yld` の基準姿勢（`CharacterClothController.OriginalPos`）を流し込む案は未実装
 - 待機表示（エモート未選択）は bind ポーズのルートを Z 軸 180° 回した姿勢にする。`.yft` の bind ポーズは `SKEL_ROOT` に半回転が入っていて −Y を向くが、アニメーションのルートトラックは +Y を向くため、そのままだと「正面」カメラに背中を向ける
 
 ### 4.7 ped モデル（M8）

@@ -7,8 +7,8 @@ Browse, search and preview FiveM emotes (rpemotes-reborn / scully_emotemenu) on 
 
 Before the first start, create the key files once with the [EmotePreviewer Key Tool](https://github.com/Acc-Off/EmotePreviewerKeyTool/releases). Requirements and usage are in the README. No game data, keys or emote resources are included.
 
-### Changes in 0.2.0
+### Changes in 0.2.1
 
-- Folder resources are watched: a `.ycd` or Lua file you add or overwrite is picked up a moment later, and the clip on screen is swapped in place without losing the playhead. A **Rescan** button on the settings page does the same on demand (`POST /api/resources/{id}/rescan`).
-- Add-on emotes registered through `AnimationListCustom.lua` (`LoadAddonEmotes`) now appear in the catalog.
-- DevTools: `skeleton` (dump a skeleton definition as JSON), `yft`, `axes` commands for working on custom animations.
+- Fixed: peds whose component drawables embed their own (partial) skeleton — `mp_f_deadhooker`, the three protagonists (`player_zero` / `player_one` / `player_two`), `cs_wade`, `ig_wade`, `cs_stretch`, `ig_tracydisanto` — looked right at rest but fell apart as soon as an emote played. Their skin bone indices are now mapped to the ped skeleton by bone tag, the way the game does it.
+- New **Cloth** toggle in the viewer (off by default): parts the game shapes with its cloth simulation (the protagonists' and cutscene peds' jackets) only exist in the files as a spread-out starting shape, so they are left out unless you turn them on. The button is enabled only for peds that have such parts.
+- DevTools: `skinbones` and `cloth` scans, `geom --bones`.

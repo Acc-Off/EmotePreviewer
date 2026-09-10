@@ -59,6 +59,8 @@ public sealed class ViewerSettings
     public bool ShowMesh { get; set; }
     /// <summary>Diffuse textures on props and the ped mesh (flat colours when off).</summary>
     public bool ShowTextures { get; set; } = true;
+    /// <summary>Draw the cloth-simulated parts of ped components (their file shape is the unsimulated starting pose).</summary>
+    public bool ShowCloth { get; set; } = false;
     /// <summary>Play animal emotes on their animal ped instead of the configured one.</summary>
     public bool AnimalPeds { get; set; } = true;
     /// <summary>Show the other ped of shared emotes.</summary>
@@ -68,7 +70,7 @@ public sealed class ViewerSettings
     /// <summary><c>auto</c>, <c>ja</c> or <c>en</c>.</summary>
     public string Language { get; set; } = "auto";
 
-    public ViewerSettings Clone() => new() { ShowHelperBones = ShowHelperBones, RootMotion = RootMotion, ShowProps = ShowProps, ShowMesh = ShowMesh, ShowTextures = ShowTextures, AnimalPeds = AnimalPeds, ShowPartner = ShowPartner, Theme = Theme, Language = Language };
+    public ViewerSettings Clone() => new() { ShowHelperBones = ShowHelperBones, RootMotion = RootMotion, ShowProps = ShowProps, ShowMesh = ShowMesh, ShowTextures = ShowTextures, ShowCloth = ShowCloth, AnimalPeds = AnimalPeds, ShowPartner = ShowPartner, Theme = Theme, Language = Language };
 }
 
 [JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]

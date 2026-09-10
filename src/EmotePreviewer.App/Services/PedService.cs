@@ -216,8 +216,16 @@ public sealed class PedService
         return FallbackSlots.Contains(slot) ? ordered.Take(4) : ordered.Take(1);
     }
 
-    static MeshResult ToResult(string ped, string file, MeshData mesh)
+    MeshResult ToResult(string ped, string file, MeshData mesh)
     {
+        // Drawables that embed their own (partial) skeleton number their blend indices against it; translate them to
+        // the ped's .yft skeleton by bone tag, the way the game binds components to the ped.
+        if (mesh.BlendBoneTags != null)
+        {
+            var skeleton = _skeletons.TryGet(ped);
+            if (skeleton != null) mesh = mesh.RemapBones(skeleton);
+            else _logger.LogWarning("Ped {Ped}/{File}: skeleton unavailable, skin bones left unmapped", ped, file);
+        }
         var key = $"ped:{ped}/{file}".ToLowerInvariant();
         var etag = "\"" + Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes($"{key}|{mesh.VertexCount}|{mesh.Indices.Length}|v{MeshData.LayoutVersion}")))[..20].ToLowerInvariant() + "\"";
         return new MeshResult($"{ped}/{file}", false, etag, mesh, "ped/" + ped.ToLowerInvariant());

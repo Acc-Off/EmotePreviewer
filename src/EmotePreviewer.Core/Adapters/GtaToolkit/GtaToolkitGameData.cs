@@ -45,6 +45,9 @@ public sealed class GtaToolkitGameData : IGameDataSource
     readonly Dictionary<string, ArchiveEntry> _yddByFolder = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<uint, ArchiveEntry> _ytd = new();
     readonly Dictionary<string, ArchiveEntry> _ytdByFolder = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Cloth dictionaries (<c>.yld</c>): the ped drawables whose cloth parts the game simulates, by name hash and by "folder/name".</summary>
+    readonly HashSet<uint> _yld = new();
+    readonly HashSet<string> _yldByFolder = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>clip_sets.ymt files in archive order (the base game's, then the update's, which supersedes it).</summary>
     readonly List<(IArchiveBinaryFile File, string Path)> _clipSetFiles = new();
     ClipSetTable? _clipSets;
@@ -201,6 +204,12 @@ public sealed class GtaToolkitGameData : IGameDataSource
                     _ytd[JenkinsHash.HashLower(name[..^4])] = entry;
                     var folder = LastFolder(dirPath);
                     if (folder.Length > 0) _ytdByFolder[folder + "/" + name[..^4]] = entry;
+                }
+                else if (name.EndsWith(".yld", StringComparison.OrdinalIgnoreCase))
+                {
+                    _yld.Add(JenkinsHash.HashLower(name[..^4]));
+                    var folder = LastFolder(dirPath);
+                    if (folder.Length > 0) _yldByFolder.Add(folder + "/" + name[..^4]);
                 }
             }
             else if (file is IArchiveBinaryFile bin)
@@ -591,10 +600,16 @@ public sealed class GtaToolkitGameData : IGameDataSource
             for (int i = 0; i < hashes.Count && i < values.Count; i++)
                 if (hashes[i] == hash) { index = i; break; }
         }
-        return MeshExtractor.Extract(values[index], $"{pedFolder}/{fileName}");
+        return MeshExtractor.Extract(values[index], $"{pedFolder}/{fileName}", HasPedCloth(pedFolder, fileName));
     }
 
     public bool HasPedComponent(string pedFolder, string fileName) => _yddByFolder.ContainsKey(pedFolder + "/" + fileName);
+
+    /// <summary>Whether a folder ped's component file comes with a cloth dictionary (<c>uppr_000_u.yld</c>): its cloth parts are simulated in-game.</summary>
+    public bool HasPedCloth(string pedFolder, string fileName) => _yldByFolder.Contains(pedFolder + "/" + fileName);
+
+    /// <summary>Whether a component ped has a cloth dictionary (<c>&lt;ped&gt;.yld</c>).</summary>
+    public bool HasPedCloth(string ped) => _yld.Contains(JenkinsHash.HashLower(ped));
 
     // ------------------------------------------------------------------ peds
 
@@ -648,11 +663,12 @@ public sealed class GtaToolkitGameData : IGameDataSource
         var hashes = dict.Hashes?.Entries;
         if (values == null) return result;
         var names = PedNaming.DrawableNameCandidates(ped);
+        var cloth = HasPedCloth(ped);
         for (int i = 0; i < values.Count; i++)
         {
             var hash = hashes != null && i < hashes.Count ? hashes[i] : 0u;
             var name = names.TryGetValue(hash, out var n) ? n : $"0x{hash:X8}";
-            try { result.Add((name, MeshExtractor.Extract(values[i], $"{ped}/{name}"))); }
+            try { result.Add((name, MeshExtractor.Extract(values[i], $"{ped}/{name}", cloth))); }
             catch (Exception ex) { _error?.Invoke($"{ped}.ydd[{i}]: {ex.Message}"); }
         }
         return result;

@@ -72,6 +72,7 @@ export class ViewerController {
   private showProps = true;
   private showMesh = false;
   private showTextures = true;
+  private showCloth = false;
   private rootMotion = false;
   /** Set when a rig must be re-posed even though the timeline did not move (clip loaded, time sought, rig rebuilt). */
   private dirty = true;
@@ -112,6 +113,7 @@ export class ViewerController {
     rigSlot.props.setTextured(this.showTextures);
     rigSlot.ped.setVisible(this.showMesh);
     rigSlot.ped.setTextured(this.showTextures);
+    rigSlot.ped.setCloth(this.showCloth);
     rigSlot.playback.setRootMotion(this.rootMotion);
     this.slots[slot] = rigSlot;
     this.applyPlacement();
@@ -202,6 +204,17 @@ export class ViewerController {
       s.props.setTextured(on);
       s.ped.setTextured(on);
     });
+  }
+
+  /** Cloth-simulated parts of the ped components (jackets of the story peds), drawn or left out. */
+  setCloth(on: boolean): void {
+    this.showCloth = on;
+    this.forEach((s) => s.ped.setCloth(on));
+  }
+
+  /** Whether a slot's loaded ped has cloth-simulated geometry. */
+  hasCloth(slot: Slot): boolean {
+    return this.slots[slot]?.ped.hasCloth ?? false;
   }
 
   /** Binds a slot's mannequin components; the current pose is restored afterwards. */

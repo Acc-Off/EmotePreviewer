@@ -21,6 +21,8 @@ using EmotePreviewer.Fixtures;
 //   devtools props [limit] [--textures]                           check how many prop models referenced by the catalog resolve (and their diffuse textures)
 //   devtools peds [filter]                                        list the ped models in the game data (name, storage form, category)
 //   devtools pedinfo <ped>                                        default component per slot of a ped (folder or component type)
+//   devtools skinbones [filter]                                   peds whose component drawables embed their own skeleton: whether the bone numbering differs from the .yft and whether every tag resolves
+//   devtools cloth [filter]                                       peds with cloth-simulated drawables (the parts the "Cloth" toggle hides), default variations marked
 //   devtools dds <scope> <name> [out.dds]                         extract a diffuse texture (scope: prop model or ped) as DDS
 //   devtools animals                                              which ped every animal entry of the catalog resolves to
 //   devtools shared [--gta-check]                                 partner / placement / clip status of every shared emote (two-ped) entry
@@ -389,7 +391,7 @@ switch (cmd)
         // Raw model / geometry layout of a drawable (props: "geom <model>", component peds: "geom <ped>/<index>", folder peds: "geom <folder>/<file>").
         if (rest.Count < 2) return Usage();
         using var gd = OpenGta();
-        foreach (var target in rest.Skip(1))
+        foreach (var target in rest.Skip(1).Where(a => !a.StartsWith("--", StringComparison.Ordinal)))
         {
             RageLib.Resources.GTA5.PC.Drawables.Drawable? d = null;
             var parts = target.Split('/', 2);
@@ -397,6 +399,10 @@ switch (cmd)
             else if (parts.Length == 2) d = gd.LoadRawPedDictionary(parts[0], parts[1])?.Values?.Entries?.FirstOrDefault();
             else d = gd.LoadRawDrawable(target);
             if (d == null) { Console.WriteLine($"{target}: not found"); continue; }
+            // Drawables may embed the skeleton their blend indices refer to (see MeshData.BlendBoneTags); --bones lists it as name:tag.
+            var own = d.Skeleton?.BoneData?.Bones;
+            Console.WriteLine($"{target}: embedded skeleton={(own?.Count.ToString() ?? "none")}"
+                + (own != null && rest.Contains("--bones") ? " " + string.Join(",", Enumerable.Range(0, own.Count).Select(i => own[i].Name?.Value + ":" + own[i].BoneId)) : ""));
             Console.WriteLine($"{target}: lods high={d.LodGroup.LodHigh?.Models?.Entries?.Count} med={d.LodGroup.LodMedium?.Models?.Entries?.Count} low={d.LodGroup.LodLow?.Models?.Entries?.Count} vlow={d.LodGroup.LodVeryLow?.Models?.Entries?.Count}");
             var shs = d.ShaderGroup?.Shaders?.Entries;
             if (shs != null)
@@ -429,6 +435,8 @@ switch (cmd)
                         var vb = g?.VertexBuffer;
                         var col = g != null ? EmotePreviewer.Core.Adapters.GtaToolkit.MeshExtractor.AverageColor0(g) : null;
                         Console.WriteLine($"    geometry {gi}: vertices={vb?.VertexCount} stride={vb?.VertexStride} flags=0x{(ushort?)vb?.Info?.Flags:X4} types=0x{(ulong?)vb?.Info?.Types:X16} indices={g?.IndicesCount} boneIds={g?.BonesId?.Count} color0={(col == null ? "-" : string.Join(",", col.Select(x => x.ToString("F0"))))}");
+                        if (g?.BonesId != null && rest.Contains("--bones"))
+                            Console.WriteLine($"      boneIds: {string.Join(",", Enumerable.Range(0, g.BonesId.Count).Select(i => g.BonesId[i].ToString()))}");
                     }
                 }
             }
@@ -516,7 +524,7 @@ switch (cmd)
                         var mesh = gd.LoadPedComponent(ped, f.FileName);
                         var diffuse = mesh?.SubMeshes.Select(sb => sb.Diffuse).FirstOrDefault(d => d != null);
                         var tex = diffuse != null && mesh != null ? (mesh.FindEmbedded(diffuse) != null ? "embedded" : gd.HasPedTexture(ped, diffuse) ? "ytd" : "MISSING") : "-";
-                        Console.WriteLine($"  {f.FileName,-14} {mesh?.VertexCount,6} verts  diffuse={diffuse} ({tex})");
+                        Console.WriteLine($"  {f.FileName,-14} {mesh?.VertexCount,6} verts  diffuse={diffuse} ({tex}){(mesh?.BlendBoneTags != null ? $"  own skeleton {mesh.BlendBoneTags.Length} bones" : "")}");
                         if (mesh != null && mesh.VertexCount >= 8) break;
                     }
                 }
@@ -529,11 +537,83 @@ switch (cmd)
                     var parsed = PedNaming.ParseFile(name, ped);
                     var slot = parsed != null ? $"{parsed.Slot}/{parsed.Number}" : diffuse != null && PedNaming.ParseDiffuse(diffuse) is { } pd ? $"{pd.slot}/{pd.number} (by diffuse)" : "?";
                     var tex = diffuse != null ? (gd.LoadTexture(ped, diffuse) != null ? "ytd" : "MISSING") : "-";
-                    Console.WriteLine($"  {name,-28} {mesh.VertexCount,6} verts  slot={slot,-22} diffuse={diffuse} ({tex})");
+                    Console.WriteLine($"  {name,-28} {mesh.VertexCount,6} verts  slot={slot,-22} diffuse={diffuse} ({tex}){(mesh.BlendBoneTags != null ? $"  own skeleton {mesh.BlendBoneTags.Length} bones" : "")}");
                 }
             }
             Console.WriteLine($"  in {swp.ElapsedMilliseconds} ms");
         }
+        break;
+    }
+    case "skinbones":
+    {
+        // Component drawables may embed the (partial) skeleton they are skinned to; the viewer remaps their blend
+        // indices to the ped's .yft by bone tag. Lists the peds where that remap changes numbers or cannot resolve a tag.
+        using var gd = OpenGta();
+        var filter = rest.ElementAtOrDefault(1);
+        var peds = gd.ListPeds().Where(p => filter == null || p.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList();
+        int scanned = 0, embedded = 0, renumbered = 0, unresolved = 0;
+        foreach (var p in peds)
+        {
+            var skeleton = gd.LoadSkeleton(p.Name);
+            if (skeleton == null) continue;
+            IEnumerable<(string file, MeshData mesh)> meshes;
+            try
+            {
+                meshes = p.Storage == PedStorage.Folder
+                    ? gd.PedFolderFiles(p.Name).Select(f => (f, gd.LoadPedComponent(p.Name, f))).Where(x => x.Item2 != null).Select(x => (x.f, x.Item2!)).ToList()
+                    : gd.LoadPedDictionary(p.Name).ToList();
+            }
+            catch (Exception ex) { Console.WriteLine($"  {p.Name}: {ex.Message}"); continue; }
+            scanned++;
+            var notes = new List<string>();
+            foreach (var (file, mesh) in meshes)
+            {
+                if (mesh.BlendBoneTags == null) continue;
+                embedded++;
+                var missing = new List<int>();
+                bool identity = true;
+                for (int i = 0; i < mesh.BlendBoneTags.Length; i++)
+                {
+                    var index = skeleton.IndexOfTag(mesh.BlendBoneTags[i]);
+                    if (index < 0) missing.Add(i);
+                    else if (index != i) identity = false;
+                }
+                if (missing.Count > 0) { unresolved++; notes.Add($"{file}: {missing.Count} of {mesh.BlendBoneTags.Length} tags missing"); }
+                else if (!identity) { renumbered++; notes.Add($"{file}: {mesh.BlendBoneTags.Length} bones renumbered (yft {skeleton.Bones.Count})"); }
+            }
+            if (notes.Count > 0) Console.WriteLine($"{p.Name} ({p.Storage}): " + string.Join("; ", notes));
+        }
+        Console.WriteLine($"{scanned} peds scanned: {embedded} drawables with an embedded skeleton, {renumbered} renumbered, {unresolved} with unresolved tags");
+        break;
+    }
+    case "cloth":
+    {
+        using var gd = OpenGta();
+        var filter = rest.ElementAtOrDefault(1);
+        int pedsWithCloth = 0, parts = 0;
+        foreach (var p in gd.ListPeds().Where(p => filter == null || p.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)))
+        {
+            List<(string file, MeshData mesh)> meshes;
+            try
+            {
+                meshes = p.Storage == PedStorage.Folder
+                    ? gd.PedFolderFiles(p.Name).Where(f => gd.HasPedCloth(p.Name, f)).Select(f => (f, gd.LoadPedComponent(p.Name, f))).Where(x => x.Item2 != null).Select(x => (x.f, x.Item2!)).ToList()
+                    : gd.HasPedCloth(p.Name) ? gd.LoadPedDictionary(p.Name) : new();
+            }
+            catch (Exception ex) { Console.WriteLine($"  {p.Name}: {ex.Message}"); continue; }
+            var cloth = meshes.Where(m => m.mesh.SubMeshes.Any(s => s.Cloth)).ToList();
+            if (cloth.Count == 0) continue;
+            pedsWithCloth++; parts += cloth.Count;
+            var items = cloth.Select(m =>
+            {
+                var parsed = PedNaming.ParseFile(m.file, p.Name);
+                var isDefault = parsed?.Number == 0;
+                var verts = m.mesh.SubMeshes.Where(s => s.Cloth).Sum(s => s.IndexCount) / 3;
+                return $"{m.file}{(isDefault ? "*" : "")} ({verts} tris)";
+            });
+            Console.WriteLine($"{p.Name} ({p.Storage}): " + string.Join(", ", items));
+        }
+        Console.WriteLine($"{pedsWithCloth} peds with cloth-simulated parts ({parts} drawables); * = default variation (shown unless the toggle is on)");
         break;
     }
     case "dds":

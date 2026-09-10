@@ -96,6 +96,8 @@ dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- pedt
 dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- missing      # breakdown of missing props, dictionaries and clips
 dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- peds [filter] # ped models in the game data (storage form, category)
 dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- pedinfo <ped> # default drawable and texture per component slot of a ped
+dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- skinbones [filter]   # peds whose component drawables embed their own skeleton and need the bone-tag remap
+dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- cloth [filter]       # peds with cloth-simulated drawables (what the "Cloth" toggle hides), default variations marked
 dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- dds <model|ped> <texture> [out.dds]  # write a texture as DDS
 dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- animals      # which ped each animal emote maps to
 dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- shared [--gta-check]  # partner, placement and clip status of the shared emotes

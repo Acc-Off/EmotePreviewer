@@ -70,6 +70,65 @@ public sealed class MeshDataTests
         catch (GtaKeys.KeyMaterialMissingException ex) { throw new SkipException(ex.Message); }
     }
 
+    [Fact]
+    public void RemapBonesTranslatesEmbeddedSkeletonIndicesByTag()
+    {
+        // The drawable's own skeleton lists three bones (tags 0, 500, 700); the ped skeleton has them at other indices.
+        var mesh = new MeshData
+        {
+            Name = "part",
+            Positions = new float[] { 0, 0, 0, 1, 0, 0, 0, 1, 0 },
+            BlendIndices = new ushort[] { 1, 2, 0, 0, 2, 2, 2, 2, 0, 1, 0, 0 },
+            BlendWeights = new float[] { 0.5f, 0.5f, 0, 0, 1, 0, 0, 0, 0.5f, 0.5f, 0, 0 },
+            BlendBoneTags = new ushort[] { 0, 500, 700 },
+            Indices = new uint[] { 0, 1, 2 },
+            SubMeshes = new[] { new SubMesh(0, 3, 0u) },
+            Warnings = Array.Empty<string>(),
+        };
+        var skeleton = new SkeletonDef("ped", new[]
+        {
+            new BoneDef(0, 0, "SKEL_ROOT", -1, Vector3.Zero, Quaternion.Identity, Vector3.One),
+            new BoneDef(1, 100, "SKEL_Pelvis", 0, Vector3.Zero, Quaternion.Identity, Vector3.One),
+            new BoneDef(2, 700, "SKEL_Spine0", 1, Vector3.Zero, Quaternion.Identity, Vector3.One),
+            new BoneDef(3, 500, "SKEL_Spine1", 2, Vector3.Zero, Quaternion.Identity, Vector3.One),
+        });
+
+        var remapped = mesh.RemapBones(skeleton);
+        Assert.NotSame(mesh, remapped);
+        Assert.Null(remapped.BlendBoneTags);
+        Assert.Equal(new ushort[] { 3, 2, 0, 0, 2, 2, 2, 2, 0, 3, 0, 0 }, remapped.BlendIndices);
+        Assert.Same(mesh.BlendWeights, remapped.BlendWeights);
+        Assert.Empty(remapped.Warnings);
+
+        // Without an embedded skeleton the indices already refer to the ped skeleton and nothing happens.
+        var direct = new MeshData
+        {
+            Name = "direct", Positions = mesh.Positions, BlendIndices = mesh.BlendIndices, BlendWeights = mesh.BlendWeights,
+            Indices = mesh.Indices, SubMeshes = mesh.SubMeshes, Warnings = mesh.Warnings,
+        };
+        Assert.Same(direct, direct.RemapBones(skeleton));
+    }
+
+    [Fact]
+    public void RemapBonesFallsBackToRootForUnknownTags()
+    {
+        var mesh = new MeshData
+        {
+            Name = "part",
+            Positions = new float[] { 0, 0, 0 },
+            BlendIndices = new ushort[] { 1, 0, 0, 0 },
+            BlendWeights = new float[] { 1, 0, 0, 0 },
+            BlendBoneTags = new ushort[] { 0, 999 },
+            Indices = new uint[] { 0, 0, 0 },
+            SubMeshes = new[] { new SubMesh(0, 3, 0u) },
+            Warnings = Array.Empty<string>(),
+        };
+        var skeleton = new SkeletonDef("ped", new[] { new BoneDef(0, 0, "SKEL_ROOT", -1, Vector3.Zero, Quaternion.Identity, Vector3.One) });
+        var remapped = mesh.RemapBones(skeleton);
+        Assert.Equal(new ushort[] { 0, 0, 0, 0 }, remapped.BlendIndices);
+        Assert.Contains(remapped.Warnings, w => w.Contains("999"));
+    }
+
     [SkippableFact]
     public void PropDrawableExtractsWithSanePositions()
     {
@@ -119,5 +178,59 @@ public sealed class MeshDataTests
             var sum = mesh.BlendWeights![v * 4] + mesh.BlendWeights[v * 4 + 1] + mesh.BlendWeights[v * 4 + 2] + mesh.BlendWeights[v * 4 + 3];
             Assert.InRange(sum, 0.97f, 1.03f);
         }
+    }
+
+    /// <summary>
+    /// Peds whose component drawables embed a partial skeleton (the dead hooker, the story characters) number their
+    /// blend indices against that skeleton; remapped by tag, the head is driven by the head bones, not by whatever
+    /// bone happens to sit at the same index in the .yft.
+    /// </summary>
+    [SkippableFact]
+    public void EmbeddedSkeletonHeadRemapsToHeadBones()
+    {
+        using var gd = OpenOrSkip();
+        Skip.If(!gd.HasPedComponent("mp_f_deadhooker", "head_000_r"), "mp_f_deadhooker not in this game version");
+        var skel = gd.LoadSkeleton("mp_f_deadhooker")!;
+        var raw = gd.LoadPedComponent("mp_f_deadhooker", "head_000_r")!;
+        Skip.If(raw.BlendBoneTags == null, "drawable no longer embeds a skeleton");
+        Assert.NotEqual(skel.Bones.Count, raw.BlendBoneTags!.Length);
+
+        var mesh = raw.RemapBones(skel);
+        Assert.Null(mesh.BlendBoneTags);
+        Assert.Empty(mesh.Warnings);
+        // The bone with the most dominant weights has to be the head, and the vertices it drives sit near it.
+        var headIndex = skel.Bones.First(b => b.Name == "SKEL_Head").Index;
+        var counts = new int[skel.Bones.Count];
+        for (int v = 0; v < mesh.VertexCount; v++)
+        {
+            int best = 0;
+            for (int k = 1; k < 4; k++) if (mesh.BlendWeights![v * 4 + k] > mesh.BlendWeights[v * 4 + best]) best = k;
+            counts[mesh.BlendIndices![v * 4 + best]]++;
+        }
+        var dominant = Array.IndexOf(counts, counts.Max());
+        _out.WriteLine($"dominant bone {skel.Bones[dominant].Name} ({counts[dominant]} of {mesh.VertexCount} vertices)");
+        Assert.Equal(headIndex, dominant);
+        // Read as .yft indices, the same vertices would have landed on another bone (that is the bug being guarded).
+        Assert.NotEqual(headIndex, raw.BlendBoneTags.Length > headIndex ? skel.IndexOfTag(raw.BlendBoneTags[headIndex]) : -1);
+    }
+
+    /// <summary>
+    /// Michael's suit jacket is cloth-simulated in-game (the drawable ships a .yld); its cloth-shader geometries are
+    /// flagged so the viewer can leave them out, while the shirt underneath and ordinary clothes are not.
+    /// </summary>
+    [SkippableFact]
+    public void ClothSimulatedGeometryIsFlagged()
+    {
+        using var gd = OpenOrSkip();
+        Skip.If(!gd.HasPedComponent("player_zero", "uppr_000_u") || !gd.HasPedCloth("player_zero", "uppr_000_u"), "player_zero jacket not in this game version");
+        var jacket = gd.LoadPedComponent("player_zero", "uppr_000_u")!;
+        _out.WriteLine(string.Join(", ", jacket.SubMeshes.Select(s => $"{s.ShaderName}:{(s.Cloth ? "cloth" : "solid")}")));
+        Assert.Contains(jacket.SubMeshes, s => s.Cloth);
+        Assert.Contains(jacket.SubMeshes, s => !s.Cloth);
+        Assert.All(jacket.SubMeshes, s => Assert.Equal(s.ShaderName?.Contains("cloth") ?? false, s.Cloth));
+
+        Skip.If(!gd.HasPedComponent("mp_m_freemode_01", "uppr_000_r"), "freemode torso not in this game version");
+        var torso = gd.LoadPedComponent("mp_m_freemode_01", "uppr_000_r")!;
+        Assert.DoesNotContain(torso.SubMeshes, s => s.Cloth);
     }
 }
