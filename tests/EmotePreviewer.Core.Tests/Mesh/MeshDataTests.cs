@@ -228,6 +228,20 @@ public sealed class MeshDataTests
         Assert.Contains(jacket.SubMeshes, s => s.Cloth);
         Assert.Contains(jacket.SubMeshes, s => !s.Cloth);
         Assert.All(jacket.SubMeshes, s => Assert.Equal(s.ShaderName?.Contains("cloth") ?? false, s.Cloth));
+        Assert.Empty(jacket.Warnings);
+        // Cloth vertices are stored as barycentric weights over simulation vertices; decoded through the .yld binding
+        // they become ordinary bone weights (sum 1, every index inside the bone palette) instead of the 1.5 sums that
+        // pushed the jacket open.
+        var palette = jacket.BlendBoneTags!.Length;
+        for (int v = 0; v < jacket.VertexCount; v++)
+        {
+            var sum = jacket.BlendWeights![v * 4] + jacket.BlendWeights[v * 4 + 1] + jacket.BlendWeights[v * 4 + 2] + jacket.BlendWeights[v * 4 + 3];
+            Assert.InRange(sum, 0.97f, 1.03f);
+            for (int k = 0; k < 4; k++) Assert.True(jacket.BlendIndices![v * 4 + k] < palette, $"vertex {v} bone slot {k} outside the palette");
+        }
+        var skeleton = gd.LoadSkeleton("player_zero")!;
+        var bound = jacket.RemapBones(skeleton);
+        Assert.Empty(bound.Warnings);
 
         Skip.If(!gd.HasPedComponent("mp_m_freemode_01", "uppr_000_r"), "freemode torso not in this game version");
         var torso = gd.LoadPedComponent("mp_m_freemode_01", "uppr_000_r")!;

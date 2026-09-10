@@ -12,6 +12,7 @@ using RageLib.Resources;
 using RageLib.Resources.Common;
 using RageLib.Resources.GTA5;
 using RageLib.Resources.GTA5.PC.Clips;
+using RageLib.Resources.GTA5.PC.Clothes;
 using RageLib.Resources.GTA5.PC.Drawables;
 using RageLib.Resources.GTA5.PC.Fragments;
 using RageLib.Resources.GTA5.PC.Textures;
@@ -46,8 +47,8 @@ public sealed class GtaToolkitGameData : IGameDataSource
     readonly Dictionary<uint, ArchiveEntry> _ytd = new();
     readonly Dictionary<string, ArchiveEntry> _ytdByFolder = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Cloth dictionaries (<c>.yld</c>): the ped drawables whose cloth parts the game simulates, by name hash and by "folder/name".</summary>
-    readonly HashSet<uint> _yld = new();
-    readonly HashSet<string> _yldByFolder = new(StringComparer.OrdinalIgnoreCase);
+    readonly Dictionary<uint, ArchiveEntry> _yld = new();
+    readonly Dictionary<string, ArchiveEntry> _yldByFolder = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>clip_sets.ymt files in archive order (the base game's, then the update's, which supersedes it).</summary>
     readonly List<(IArchiveBinaryFile File, string Path)> _clipSetFiles = new();
     ClipSetTable? _clipSets;
@@ -207,9 +208,10 @@ public sealed class GtaToolkitGameData : IGameDataSource
                 }
                 else if (name.EndsWith(".yld", StringComparison.OrdinalIgnoreCase))
                 {
-                    _yld.Add(JenkinsHash.HashLower(name[..^4]));
+                    var entry = new ArchiveEntry(res, archivePath, dirPath);
+                    _yld[JenkinsHash.HashLower(name[..^4])] = entry;
                     var folder = LastFolder(dirPath);
-                    if (folder.Length > 0) _yldByFolder.Add(folder + "/" + name[..^4]);
+                    if (folder.Length > 0) _yldByFolder[folder + "/" + name[..^4]] = entry;
                 }
             }
             else if (file is IArchiveBinaryFile bin)
@@ -600,16 +602,95 @@ public sealed class GtaToolkitGameData : IGameDataSource
             for (int i = 0; i < hashes.Count && i < values.Count; i++)
                 if (hashes[i] == hash) { index = i; break; }
         }
-        return MeshExtractor.Extract(values[index], $"{pedFolder}/{fileName}", HasPedCloth(pedFolder, fileName));
+        return MeshExtractor.Extract(values[index], $"{pedFolder}/{fileName}", LoadClothBinding(pedFolder, fileName));
+    }
+
+    /// <summary>The cloth binding of a folder ped's component file, or null when it has no <c>.yld</c> (or it is unreadable).</summary>
+    public ClothBinding? LoadClothBinding(string pedFolder, string fileName)
+    {
+        if (!_yldByFolder.TryGetValue(pedFolder + "/" + fileName, out var entry)) return null;
+        try
+        {
+            var dict = LoadClothDictionary(entry);
+            var cloth = dict.Values?.Entries?.FirstOrDefault();
+            return cloth == null ? null : ToClothBinding(cloth);
+        }
+        catch (Exception ex) { _error?.Invoke($"{pedFolder}/{fileName}.yld: {ex.Message}"); return null; }
+    }
+
+    /// <summary>The cloth bindings of a component ped, keyed by drawable name hash; empty without a <c>&lt;ped&gt;.yld</c>.</summary>
+    Dictionary<uint, ClothBinding> LoadClothBindings(string ped)
+    {
+        var result = new Dictionary<uint, ClothBinding>();
+        if (!_yld.TryGetValue(JenkinsHash.HashLower(ped), out var entry)) return result;
+        try
+        {
+            var dict = LoadClothDictionary(entry);
+            var values = dict.Values?.Entries;
+            var hashes = dict.Hashes?.Entries;
+            if (values == null || hashes == null) return result;
+            for (int i = 0; i < values.Count && i < hashes.Count; i++)
+            {
+                var b = values[i] == null ? null : ToClothBinding(values[i]);
+                if (b != null) result[hashes[i]] = b;
+            }
+        }
+        catch (Exception ex) { _error?.Invoke($"{ped}.yld: {ex.Message}"); }
+        return result;
+    }
+
+    PgDictionary64<CharacterCloth> LoadClothDictionary(ArchiveEntry entry)
+    {
+        using var ms = ExportResource(entry.File);
+        var res = new Resource7<PgDictionary64<CharacterCloth>>();
+        res.Load(ms);
+        return res.ResourceData;
+    }
+
+    /// <summary>
+    /// Per simulation vertex, the bones it is bound to: <c>BindingInfo</c> holds four weights and indices into
+    /// <c>BoneIDMap</c>, whose entries are bone tags.
+    /// </summary>
+    static ClothBinding? ToClothBinding(CharacterCloth cloth)
+    {
+        var ctl = cloth.Controller;
+        var binding = ctl?.BindingInfo?.Entries;
+        var tags = ctl?.BoneIDMap?.Entries;
+        if (binding == null || tags == null || binding.Count == 0) return null;
+        var bones = new List<IReadOnlyList<(ushort, float)>>(binding.Count);
+        for (int v = 0; v < binding.Count; v++)
+        {
+            var b = binding[v];
+            var list = new List<(ushort, float)>(4);
+            var weights = new[] { b.Weights.X, b.Weights.Y, b.Weights.Z, b.Weights.W };
+            var indices = new[] { b.BlendIndex0, b.BlendIndex1, b.BlendIndex2, b.BlendIndex3 };
+            for (int k = 0; k < 4; k++)
+            {
+                if (weights[k] <= 0 || indices[k] >= tags.Count) continue;
+                list.Add(((ushort)tags[(int)indices[k]], weights[k]));
+            }
+            bones.Add(list);
+        }
+        return new ClothBinding(binding.Count, bones);
     }
 
     public bool HasPedComponent(string pedFolder, string fileName) => _yddByFolder.ContainsKey(pedFolder + "/" + fileName);
 
     /// <summary>Whether a folder ped's component file comes with a cloth dictionary (<c>uppr_000_u.yld</c>): its cloth parts are simulated in-game.</summary>
-    public bool HasPedCloth(string pedFolder, string fileName) => _yldByFolder.Contains(pedFolder + "/" + fileName);
+    public bool HasPedCloth(string pedFolder, string fileName) => _yldByFolder.ContainsKey(pedFolder + "/" + fileName);
+
+    /// <summary>The raw cloth dictionary of a folder ped's component file (diagnostics); null when there is none.</summary>
+    public PgDictionary64<CharacterCloth>? LoadRawPedCloth(string pedFolder, string fileName)
+    {
+        if (!_yldByFolder.TryGetValue(pedFolder + "/" + fileName, out var entry)) return null;
+        using var ms = ExportResource(entry.File);
+        var res = new Resource7<PgDictionary64<CharacterCloth>>();
+        res.Load(ms);
+        return res.ResourceData;
+    }
 
     /// <summary>Whether a component ped has a cloth dictionary (<c>&lt;ped&gt;.yld</c>).</summary>
-    public bool HasPedCloth(string ped) => _yld.Contains(JenkinsHash.HashLower(ped));
+    public bool HasPedCloth(string ped) => _yld.ContainsKey(JenkinsHash.HashLower(ped));
 
     // ------------------------------------------------------------------ peds
 
@@ -663,12 +744,12 @@ public sealed class GtaToolkitGameData : IGameDataSource
         var hashes = dict.Hashes?.Entries;
         if (values == null) return result;
         var names = PedNaming.DrawableNameCandidates(ped);
-        var cloth = HasPedCloth(ped);
+        var cloth = LoadClothBindings(ped);
         for (int i = 0; i < values.Count; i++)
         {
             var hash = hashes != null && i < hashes.Count ? hashes[i] : 0u;
             var name = names.TryGetValue(hash, out var n) ? n : $"0x{hash:X8}";
-            try { result.Add((name, MeshExtractor.Extract(values[i], $"{ped}/{name}", cloth))); }
+            try { result.Add((name, MeshExtractor.Extract(values[i], $"{ped}/{name}", cloth.GetValueOrDefault(hash)))); }
             catch (Exception ex) { _error?.Invoke($"{ped}.ydd[{i}]: {ex.Message}"); }
         }
         return result;

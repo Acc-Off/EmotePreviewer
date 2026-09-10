@@ -7,8 +7,9 @@ Browse, search and preview FiveM emotes (rpemotes-reborn / scully_emotemenu) on 
 
 Before the first start, create the key files once with the [EmotePreviewer Key Tool](https://github.com/Acc-Off/EmotePreviewerKeyTool/releases). Requirements and usage are in the README. No game data, keys or emote resources are included.
 
-### Changes in 0.2.1
+### Changes in 0.2.2
 
-- Fixed: peds whose component drawables embed their own (partial) skeleton — `mp_f_deadhooker`, the three protagonists (`player_zero` / `player_one` / `player_two`), `cs_wade`, `ig_wade`, `cs_stretch`, `ig_tracydisanto` — looked right at rest but fell apart as soon as an emote played. Their skin bone indices are now mapped to the ped skeleton by bone tag, the way the game does it.
-- New **Cloth** toggle in the viewer (off by default): parts the game shapes with its cloth simulation (the protagonists' and cutscene peds' jackets) only exist in the files as a spread-out starting shape, so they are left out unless you turn them on. The button is enabled only for peds that have such parts.
-- DevTools: `skinbones` and `cloth` scans, `geom --bones`.
+- Fixed: the cloth-simulated parts of the story and cutscene peds (the protagonists' jackets and 50 other drawables) were drawn pushed away from the body. Their vertices are stored as barycentric weights over the cloth simulation mesh, not as bone weights; they are now decoded through the `.yld` binding and skinned to the body, so the jacket rests and moves with the ped (without the in-game swing). The **Cloth** toggle is on by default now.
+- Fixed: the story characters' faces (`FACIAL_*` rig, e.g. `player_zero`) folded into the skull on clips that carry a `FACIAL_facialRoot` track. Those bones are treated as facial and left to the facial layer, like `FB_*`.
+- Ped mesh ETags now hash the served bytes, so a changed extractor never leaves the browser on a stale cached mesh.
+- DevTools: `yld` (cloth dictionary dump), `cloth` reports decode problems.

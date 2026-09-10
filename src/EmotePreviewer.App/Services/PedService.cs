@@ -226,8 +226,11 @@ public sealed class PedService
             if (skeleton != null) mesh = mesh.RemapBones(skeleton);
             else _logger.LogWarning("Ped {Ped}/{File}: skeleton unavailable, skin bones left unmapped", ped, file);
         }
+        // The ETag versions the URL the browser caches (?v=), so it hashes the served bytes: the same drawable comes
+        // out differently after an extractor change (skin decoding, bone remap) even when the counts do not move.
         var key = $"ped:{ped}/{file}".ToLowerInvariant();
-        var etag = "\"" + Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes($"{key}|{mesh.VertexCount}|{mesh.Indices.Length}|v{MeshData.LayoutVersion}")))[..20].ToLowerInvariant() + "\"";
+        var content = Convert.ToHexString(SHA1.HashData(mesh.ToBytes()));
+        var etag = "\"" + Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes($"{key}|{content}|v{MeshData.LayoutVersion}")))[..20].ToLowerInvariant() + "\"";
         return new MeshResult($"{ped}/{file}", false, etag, mesh, "ped/" + ped.ToLowerInvariant());
     }
 

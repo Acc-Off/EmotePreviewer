@@ -31,8 +31,13 @@ public sealed record BoneDef(
     Vector3 Scale,
     BoneDofs Dofs = BoneDofs.All)
 {
-    /// <summary>Facial rig bones (<c>FB_*</c>): driven by the facial animation layer in-game, which overrides whatever a body clip carries for them.</summary>
-    public bool IsFacial => Name.StartsWith("FB_", StringComparison.Ordinal);
+    /// <summary>
+    /// Facial rig bones: <c>FB_*</c> on the freemode / ambient skeletons, <c>FACIAL_*</c> (the high-resolution rig under
+    /// <c>FACIAL_facialRoot</c>) on the story characters. Driven by the facial animation layer in-game, which overrides
+    /// whatever a body clip carries for them; a body clip's <c>FACIAL_facialRoot</c> track applied to a story ped folds
+    /// the whole face into the skull.
+    /// </summary>
+    public bool IsFacial => Name.StartsWith("FB_", StringComparison.Ordinal) || Name.StartsWith("FACIAL_", StringComparison.Ordinal);
 }
 
 /// <summary>Immutable skeleton definition, independent of any file-format library.</summary>

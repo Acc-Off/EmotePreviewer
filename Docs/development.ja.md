@@ -98,6 +98,7 @@ dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- peds
 dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- pedinfo <ped> # ped の部位ごとの既定ドロワブルとテクスチャの解決
 dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- skinbones [filter]   # 部位のドロワブルがスケルトンを内蔵し、ボーンタグでの付け替えが必要な ped
 dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- cloth [filter]       # 布シミュレーション部位を持つ ped（「布」トグルの対象）。既定表示の部位に印
+dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- yld <folder>/<file> [--dump <dir>]  # ped 部位のクロス辞書の中身（シミュ頂点、ボーン結合、辺）
 dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- dds <model|ped> <texture> [out.dds]  # テクスチャを DDS に書き出す
 dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- animals      # 動物エモートがどの ped に割り当たるか
 dotnet run -c Release --no-build --project tools/EmotePreviewer.DevTools -- shared [--gta-check]  # 共有エモートの相手・配置・クリップの解決状況

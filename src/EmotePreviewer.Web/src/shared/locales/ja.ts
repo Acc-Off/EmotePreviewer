@@ -200,7 +200,7 @@ export const ja = {
   "viewer.ped.animal": "動物",
   "viewer.textures": "テクスチャ",
   "viewer.cloth": "布",
-  "viewer.cloth.title": "ゲーム内では布シミュレーションで形が決まる部位（主人公の上着など）。ファイルには広げた状態の形しか無いので、既定では描かない",
+  "viewer.cloth.title": "ゲーム内では布シミュレーションで揺れる部位（主人公の上着など）。ここでは揺れず、体に固定して描く",
   "viewer.animalPed": "動物 ped",
   "viewer.animalPed.title": "この動物エモートを {ped} で再生する",
   "viewer.partner": "相手",

@@ -21,7 +21,7 @@ export class PedMesh {
   private readonly unTheme: () => void;
   private visible = false;
   private textured = true;
-  private cloth = false;
+  private cloth = true;
   private abort: AbortController | null = null;
 
   constructor(rig: SkeletonRig, scene: Scene, textures: TextureCache) {
@@ -71,8 +71,8 @@ export class PedMesh {
   }
 
   /**
-   * Shows or hides the cloth-simulated sub-meshes. Their file shape is the spread-out state the simulation starts
-   * from (a jacket held open), so they are off by default; the draw groups are rebuilt, which works in both material modes.
+   * Shows or hides the cloth-simulated sub-meshes. The server skins them to the bones their simulation vertices hang
+   * on, so they follow the body rigidly instead of swinging; the draw groups are rebuilt, which works in both material modes.
    */
   setCloth(on: boolean): void {
     this.cloth = on;

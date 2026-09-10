@@ -15,7 +15,7 @@ namespace EmotePreviewer.Core.Anim;
 /// </summary>
 public sealed class BakedClip
 {
-    public const int LayoutVersion = 2;
+    public const int LayoutVersion = 3;
     public const int FloatsPerBone = 7;
 
     public required int Fps { get; init; }

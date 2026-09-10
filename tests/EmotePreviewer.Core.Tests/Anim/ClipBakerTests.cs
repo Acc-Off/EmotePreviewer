@@ -122,6 +122,8 @@ public sealed class PoseSolverDofTests
         new BoneDef(2, 200, "FB_Jaw_045", 1, new Vector3(0, 0, 0.25f), Quaternion.Identity, Vector3.One, BoneDofs.All),
         // Translation limited to one axis.
         new BoneDef(3, 300, "SKEL_L_Hand", 1, new Vector3(0.1f, 0, 0), Quaternion.Identity, Vector3.One, BoneDofs.Rotation | BoneDofs.TransX),
+        // The story characters' facial rig root: facial as well, even though it does not start with FB_.
+        new BoneDef(4, 400, "FACIAL_facialRoot", 1, new Vector3(0, 0.1f, 0.3f), Quaternion.Identity, Vector3.One, BoneDofs.Rotation),
     });
 
     [Fact]
@@ -134,7 +136,10 @@ public sealed class PoseSolverDofTests
         sample.Translations[200] = new Vector3(1, 1, 1);
         sample.Rotations[200] = Quaternion.CreateFromAxisAngle(Vector3.UnitX, 1f);
         sample.Translations[300] = new Vector3(0.5f, 0.5f, 0.5f);
+        sample.Rotations[400] = Quaternion.CreateFromAxisAngle(Vector3.UnitY, 2f);
         solver.Apply(sample);
+        Assert.Equal(Quaternion.Identity, solver.LocalRotation[4]);
+        Assert.False(solver.Drives(4, AnimTrack.BoneRotation));
         Assert.Equal(new Vector3(0, 0, 0.5f), solver.LocalTranslation[1]);
         Assert.Equal(Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 1f), solver.LocalRotation[1]);
         Assert.Equal(new Vector3(0, 0, 0.25f), solver.LocalTranslation[2]);

@@ -12,7 +12,8 @@ namespace EmotePreviewer.Core.Model;
 /// hull with planar UVs under a second shader instance whose <c>orderNumber</c> is 1 (a secondary hair pass); drawn
 /// as an ordinary mesh it shows up as a black helmet around the strands.
 /// <paramref name="Cloth"/> marks geometry the game drives with its cloth simulation (a cloth shader on a drawable
-/// that ships a <c>.yld</c>): the file holds only a spread-out starting shape, so the viewer lets the user hide it.
+/// that ships a <c>.yld</c>): the extractor skins it rigidly to the bones its simulation vertices hang on, and the
+/// viewer lets the user hide it.
 /// </summary>
 public sealed record SubMesh(int IndexStart, int IndexCount, uint ShaderHash, string? Diffuse = null, bool DiffuseEmbedded = false, bool Palette = false, bool? Cutout = null, bool Hidden = false, bool Cloth = false)
 {
@@ -27,7 +28,7 @@ public sealed record SubMesh(int IndexStart, int IndexCount, uint ShaderHash, st
 public sealed class MeshData
 {
     /// <summary>Bumped when the byte layout or the way the arrays are derived changes (it feeds the ETags).</summary>
-    public const int LayoutVersion = 2;
+    public const int LayoutVersion = 3;
 
     public required string Name { get; init; }
     /// <summary>x, y, z per vertex.</summary>

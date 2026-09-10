@@ -72,7 +72,7 @@ export class ViewerController {
   private showProps = true;
   private showMesh = false;
   private showTextures = true;
-  private showCloth = false;
+  private showCloth = true;
   private rootMotion = false;
   /** Set when a rig must be re-posed even though the timeline did not move (clip loaded, time sought, rig rebuilt). */
   private dirty = true;

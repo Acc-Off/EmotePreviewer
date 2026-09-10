@@ -200,7 +200,7 @@ export function Viewer() {
   const showProps = settings?.viewer.showProps ?? true;
   const showMesh = settings?.viewer.showMesh ?? false;
   const showTextures = settings?.viewer.showTextures ?? true;
-  const showCloth = settings?.viewer.showCloth ?? false;
+  const showCloth = settings?.viewer.showCloth ?? true;
   const animalPeds = settings?.viewer.animalPeds ?? true;
   const showPartner = settings?.viewer.showPartner ?? true;
   const gtaReady = status?.gta === "ready";

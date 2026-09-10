@@ -202,7 +202,7 @@ export const en: Record<MessageKey, string> = {
   "viewer.ped.animal": "animal",
   "viewer.textures": "Textures",
   "viewer.cloth": "Cloth",
-  "viewer.cloth.title": "Parts the game shapes with its cloth simulation (the protagonists' jackets). The file only holds their spread-out starting shape, so they are hidden by default",
+  "viewer.cloth.title": "Parts the game moves with its cloth simulation (the protagonists' jackets). Drawn attached to the body here, without the swing",
   "viewer.animalPed": "Animal ped",
   "viewer.animalPed.title": "Play this animal emote on {ped}",
   "viewer.partner": "Partner",

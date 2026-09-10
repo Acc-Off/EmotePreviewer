@@ -22,7 +22,8 @@ using EmotePreviewer.Fixtures;
 //   devtools peds [filter]                                        list the ped models in the game data (name, storage form, category)
 //   devtools pedinfo <ped>                                        default component per slot of a ped (folder or component type)
 //   devtools skinbones [filter]                                   peds whose component drawables embed their own skeleton: whether the bone numbering differs from the .yft and whether every tag resolves
-//   devtools cloth [filter]                                       peds with cloth-simulated drawables (the parts the "Cloth" toggle hides), default variations marked
+//   devtools cloth [filter]                                       peds with cloth-simulated drawables (the "Cloth" toggle), default variations marked, decode check
+//   devtools yld <folder>/<file> [--dump <dir>]                   contents of a ped component's cloth dictionary (simulation vertices, bindings, edges)
 //   devtools dds <scope> <name> [out.dds]                         extract a diffuse texture (scope: prop model or ped) as DDS
 //   devtools animals                                              which ped every animal entry of the catalog resolves to
 //   devtools shared [--gta-check]                                 partner / placement / clip status of every shared emote (two-ped) entry
@@ -43,6 +44,11 @@ string? Opt(string name)
     return v;
 }
 
+string? Opt2(string name)
+{
+    var i = rest.IndexOf(name);
+    return i < 0 || i + 1 >= rest.Count ? null : rest[i + 1];
+}
 var dataRoot = Opt("--data") ?? FindDataRoot() ?? throw new DirectoryNotFoundException("data folder not found; pass --data <folder>");
 var gtaFolder = Opt("--gta") ?? GtaLocator.Detect();
 var keysFolder = Opt("--keys");
@@ -435,6 +441,16 @@ switch (cmd)
                         var vb = g?.VertexBuffer;
                         var col = g != null ? EmotePreviewer.Core.Adapters.GtaToolkit.MeshExtractor.AverageColor0(g) : null;
                         Console.WriteLine($"    geometry {gi}: vertices={vb?.VertexCount} stride={vb?.VertexStride} flags=0x{(ushort?)vb?.Info?.Flags:X4} types=0x{(ulong?)vb?.Info?.Types:X16} indices={g?.IndicesCount} boneIds={g?.BonesId?.Count} color0={(col == null ? "-" : string.Join(",", col.Select(x => x.ToString("F0"))))}");
+                        if (g != null && Opt2("--skin-dump") is { } dumpDir)
+                        {
+                            Directory.CreateDirectory(dumpDir);
+                            File.WriteAllLines(Path.Combine(dumpDir, $"{target.Replace('/', '_')}_{name}_{mi}_{gi}.csv"), EmotePreviewer.Core.Adapters.GtaToolkit.MeshExtractor.SkinDump(g));
+                        }
+                        if (g != null && rest.Contains("--skin"))
+                        {
+                            var stats = EmotePreviewer.Core.Adapters.GtaToolkit.MeshExtractor.SkinStats(g);
+                            if (stats != null) Console.WriteLine($"      skin: distinct indices {stats.Value.distinct} max {stats.Value.max}; weight sum min {stats.Value.minSum:F2} max {stats.Value.maxSum:F2}; first vertices: {stats.Value.sample}");
+                        }
                         if (g?.BonesId != null && rest.Contains("--bones"))
                             Console.WriteLine($"      boneIds: {string.Join(",", Enumerable.Range(0, g.BonesId.Count).Select(i => g.BonesId[i].ToString()))}");
                     }
@@ -609,11 +625,90 @@ switch (cmd)
                 var parsed = PedNaming.ParseFile(m.file, p.Name);
                 var isDefault = parsed?.Number == 0;
                 var verts = m.mesh.SubMeshes.Where(s => s.Cloth).Sum(s => s.IndexCount) / 3;
-                return $"{m.file}{(isDefault ? "*" : "")} ({verts} tris)";
+                var warn = m.mesh.Warnings.Count > 0 ? " WARN " + string.Join("; ", m.mesh.Warnings) : "";
+                float minSum = float.MaxValue, maxSum = 0;
+                for (int v = 0; v < m.mesh.VertexCount; v++)
+                {
+                    var sum = m.mesh.BlendWeights![v * 4] + m.mesh.BlendWeights[v * 4 + 1] + m.mesh.BlendWeights[v * 4 + 2] + m.mesh.BlendWeights[v * 4 + 3];
+                    minSum = Math.Min(minSum, sum); maxSum = Math.Max(maxSum, sum);
+                }
+                var sums = minSum < 0.97f || maxSum > 1.03f ? $" weight sums {minSum:F2}..{maxSum:F2}" : "";
+                return $"{m.file}{(isDefault ? "*" : "")} ({verts} tris{sums}){warn}";
             });
             Console.WriteLine($"{p.Name} ({p.Storage}): " + string.Join(", ", items));
         }
-        Console.WriteLine($"{pedsWithCloth} peds with cloth-simulated parts ({parts} drawables); * = default variation (shown unless the toggle is on)");
+        Console.WriteLine($"{pedsWithCloth} peds with cloth-simulated parts ({parts} drawables); * = default variation");
+        break;
+    }
+    case "yld":
+    {
+        // Raw contents of a folder ped's cloth dictionary (what the cloth simulation works with).
+        if (rest.Count < 2) return Usage();
+        using var gd = OpenGta();
+        var parts = rest[1].Split('/', 2);
+        var dict = parts.Length == 2 ? gd.LoadRawPedCloth(parts[0], parts[1]) : null;
+        if (dict?.Values?.Entries == null) { Console.WriteLine($"{rest[1]}: not found"); break; }
+        for (int i = 0; i < dict.Values.Entries.Count; i++)
+        {
+            var c = dict.Values.Entries[i];
+            var hash = dict.Hashes?.Entries != null && i < dict.Hashes.Entries.Count ? dict.Hashes.Entries[i] : 0u;
+            Console.WriteLine($"cloth {i} 0x{hash:X8}: poses={c.Poses?.Entries?.Count} unk30={c.Unknown_30h?.Entries?.Count} boneIndex={c.BoneIndex?.Entries?.Count} [{string.Join(",", Enumerable.Range(0, Math.Min(c.BoneIndex?.Entries?.Count ?? 0, 40)).Select(k => c.BoneIndex!.Entries![k]))}]");
+            Console.WriteLine($"  unk50 matrix: {c.Unknown_50h}");
+            var ctl = c.Controller;
+            if (ctl != null)
+            {
+                Console.WriteLine($"  controller '{ctl.Name}' type={ctl.Type}: tri={ctl.TriIndices?.Entries?.Count} originalPos={ctl.OriginalPos?.Entries?.Count} boneIndexMap={ctl.BoneIndexMap?.Entries?.Count} binding={ctl.BindingInfo?.Entries?.Count} boneIdMap={ctl.BoneIDMap?.Entries?.Count} unkA0={ctl.Unknown_A0h} unkDC={ctl.Unknown_DCh}");
+                if (ctl.BoneIndexMap != null) Console.WriteLine($"    boneIndexMap: {string.Join(",", Enumerable.Range(0, ctl.BoneIndexMap.Entries!.Count).Select(k => ctl.BoneIndexMap.Entries![k]))}");
+                if (ctl.BoneIDMap != null) Console.WriteLine($"    boneIdMap: {string.Join(",", Enumerable.Range(0, ctl.BoneIDMap.Entries!.Count).Select(k => ctl.BoneIDMap.Entries![k]))}");
+                if (ctl.OriginalPos != null) for (int k = 0; k < Math.Min(6, ctl.OriginalPos.Entries!.Count); k++) Console.WriteLine($"    originalPos[{k}] = {ctl.OriginalPos.Entries![k]}");
+                if (ctl.BindingInfo != null) for (int k = 0; k < Math.Min(6, ctl.BindingInfo.Entries!.Count); k++) { var b = ctl.BindingInfo.Entries![k]; Console.WriteLine($"    binding[{k}] = w{b.Weights} idx {b.BlendIndex0},{b.BlendIndex1},{b.BlendIndex2},{b.BlendIndex3}"); }
+                var bridge = ctl.BridgeSimGfx;
+                if (bridge != null)
+                {
+                    Console.WriteLine($"  bridge: count={bridge.Count} unk14={bridge.Unknown_14h} unk18={bridge.Unknown_18h} pinRadius={bridge.PinRadius0?.Entries?.Count}/{bridge.PinRadius1?.Entries?.Count}/{bridge.PinRadius2?.Entries?.Count}/{bridge.PinRadius3?.Entries?.Count} vertexWeight={bridge.VertexWeight0?.Entries?.Count}/{bridge.VertexWeight1?.Entries?.Count} inflation={bridge.InflationScale0?.Entries?.Count} displayMap={bridge.ClothDisplayMap0?.Entries?.Count}/{bridge.ClothDisplayMap1?.Entries?.Count}/{bridge.ClothDisplayMap2?.Entries?.Count}/{bridge.ClothDisplayMap3?.Entries?.Count} unk128={bridge.Unknown_128h?.Entries?.Count}");
+                    if (bridge.ClothDisplayMap0 != null) Console.WriteLine($"    displayMap0 first: {string.Join(",", Enumerable.Range(0, Math.Min(24, bridge.ClothDisplayMap0.Entries!.Count)).Select(k => bridge.ClothDisplayMap0.Entries![k]))} max={Enumerable.Range(0, bridge.ClothDisplayMap0.Entries!.Count).Max(k => bridge.ClothDisplayMap0.Entries![k])}");
+                    if (bridge.PinRadius0 != null) Console.WriteLine($"    pinRadius0 first: {string.Join(",", Enumerable.Range(0, Math.Min(24, bridge.PinRadius0.Entries!.Count)).Select(k => bridge.PinRadius0.Entries![k].ToString("F3")))}");
+                    if (bridge.VertexWeight0 != null) Console.WriteLine($"    vertexWeight0 first: {string.Join(",", Enumerable.Range(0, Math.Min(24, bridge.VertexWeight0.Entries!.Count)).Select(k => bridge.VertexWeight0.Entries![k].ToString("F3")))}");
+                    if (bridge.Unknown_128h != null) Console.WriteLine($"    unk128 first: {string.Join(",", Enumerable.Range(0, Math.Min(24, bridge.Unknown_128h.Entries!.Count)).Select(k => bridge.Unknown_128h.Entries![k]))}");
+                }
+                foreach (var (vn, v) in new[] { ("verlet1", ctl.VerletCloth1), ("verlet2", ctl.VerletCloth2), ("verlet3", ctl.VerletCloth3) })
+                {
+                    if (v == null) continue;
+                    Console.WriteLine($"  {vn}: unk30={v.Unknown_30h} unk34={v.Unknown_34h} unk38={v.Unknown_38h} unk3C={v.Unknown_3Ch} unk40={v.Unknown_40h} unk44={v.Unknown_44h} unk48={v.Unknown_48h} unk4C={v.Unknown_4Ch} unk50={v.Unknown_50h} unk70={v.Unknown_70h?.Entries?.Count} unk80={v.Unknown_80h?.Entries?.Count} unkA8={v.Unknown_A8h} unkAC={v.Unknown_ACh} unkE8={v.Unknown_E8h} numEdges={v.NumEdges} unkF0={v.Unknown_F0h} unkF8={v.Unknown_F8h} customEdges={v.CustomEdgeData?.Entries?.Count} edges={v.EdgeData?.Entries?.Count} unk148={v.Unknown_148h}");
+                    if (v.Unknown_70h != null) for (int k = 0; k < Math.Min(4, v.Unknown_70h.Entries!.Count); k++) Console.WriteLine($"    unk70[{k}] = {v.Unknown_70h.Entries![k]}");
+                    if (v.Unknown_80h != null) for (int k = 0; k < Math.Min(4, v.Unknown_80h.Entries!.Count); k++) Console.WriteLine($"    unk80[{k}] = {v.Unknown_80h.Entries![k]}");
+                    if (v.EdgeData != null) for (int k = 0; k < Math.Min(4, v.EdgeData.Entries!.Count); k++) { var e = v.EdgeData.Entries![k]; Console.WriteLine($"    edge[{k}] = {e.vertIndices0}-{e.vertIndices1} len2={e.EdgeLength2} w0={e.Weight0} cw={e.CompressionWeight}"); }
+                }
+            }
+            if (Opt2("--dump") is { } dumpDir && ctl != null)
+            {
+                Directory.CreateDirectory(dumpDir);
+                string V(System.Numerics.Vector4 v) => $"{v.X},{v.Y},{v.Z},{v.W}";
+                if (ctl.OriginalPos?.Entries != null) File.WriteAllLines(Path.Combine(dumpDir, "originalPos.csv"), Enumerable.Range(0, ctl.OriginalPos.Entries.Count).Select(k => V(ctl.OriginalPos.Entries[k])));
+                if (ctl.VerletCloth1?.Unknown_80h?.Entries is { } vp) File.WriteAllLines(Path.Combine(dumpDir, "verletPos.csv"), Enumerable.Range(0, vp.Count).Select(k => V(vp[k])));
+                if (ctl.VerletCloth1?.Unknown_70h?.Entries is { } vn) File.WriteAllLines(Path.Combine(dumpDir, "verletNormal.csv"), Enumerable.Range(0, vn.Count).Select(k => V(vn[k])));
+                if (ctl.VerletCloth1?.EdgeData?.Entries is { } ed) File.WriteAllLines(Path.Combine(dumpDir, "edges.csv"), Enumerable.Range(0, ed.Count).Select(k => $"{ed[k].vertIndices0},{ed[k].vertIndices1},{ed[k].EdgeLength2},{ed[k].Weight0},{ed[k].CompressionWeight}"));
+                if (ctl.VerletCloth1?.CustomEdgeData?.Entries is { } ced) File.WriteAllLines(Path.Combine(dumpDir, "customEdges.csv"), Enumerable.Range(0, ced.Count).Select(k => $"{ced[k].vertIndices0},{ced[k].vertIndices1},{ced[k].EdgeLength2},{ced[k].Weight0},{ced[k].CompressionWeight}"));
+                if (ctl.TriIndices?.Entries is { } ti) File.WriteAllLines(Path.Combine(dumpDir, "tri.csv"), Enumerable.Range(0, ti.Count).Select(k => ti[k].ToString()));
+                if (ctl.BindingInfo?.Entries is { } bd) File.WriteAllLines(Path.Combine(dumpDir, "binding.csv"), Enumerable.Range(0, bd.Count).Select(k => $"{V(bd[k].Weights)},{bd[k].BlendIndex0},{bd[k].BlendIndex1},{bd[k].BlendIndex2},{bd[k].BlendIndex3}"));
+                if (ctl.BridgeSimGfx?.ClothDisplayMap0?.Entries is { } dm) File.WriteAllLines(Path.Combine(dumpDir, "displayMap.csv"), Enumerable.Range(0, dm.Count).Select(k => dm[k].ToString()));
+                if (ctl.BridgeSimGfx?.PinRadius0?.Entries is { } pr) File.WriteAllLines(Path.Combine(dumpDir, "pinRadius.csv"), Enumerable.Range(0, pr.Count).Select(k => pr[k].ToString()));
+                if (ctl.BridgeSimGfx?.VertexWeight0?.Entries is { } vw) File.WriteAllLines(Path.Combine(dumpDir, "vertexWeight.csv"), Enumerable.Range(0, vw.Count).Select(k => vw[k].ToString()));
+                if (c.Poses?.Entries is { } ps) File.WriteAllLines(Path.Combine(dumpDir, "poses.csv"), Enumerable.Range(0, ps.Count).Select(k => $"{BitConverter.Int32BitsToSingle((int)ps[k].Unknown_0h)},{BitConverter.Int32BitsToSingle((int)ps[k].Unknown_4h)},{BitConverter.Int32BitsToSingle((int)ps[k].Unknown_8h)},{BitConverter.Int32BitsToSingle((int)ps[k].Unknown_Ch)}"));
+            }
+            var morph = c.Controller?.MorphController;
+            if (morph != null)
+                foreach (var (mn, m) in new[] { ("morph18", morph.Unknown_18h_Data), ("morph20", morph.Unknown_20h_Data), ("morph28", morph.Unknown_28h_Data) })
+                {
+                    if (m == null) continue;
+                    string L<T>(RageLib.Resources.Common.SimpleList64<T>? l, int n = 12) where T : unmanaged => l?.Entries == null ? "-" : $"{l.Entries.Count}[{string.Join(",", Enumerable.Range(0, Math.Min(n, l.Entries.Count)).Select(k => l.Entries[k]!.ToString()))}]";
+                    Console.WriteLine($"  {mn}: u50={L(m.Unknown_50h, 3)} u60={L(m.Unknown_60h)} u70={L(m.Unknown_70h)} u80={L(m.Unknown_80h)} u90={L(m.Unknown_90h)} uA0={L(m.Unknown_A0h, 3)} uB0={L(m.Unknown_B0h)} uC0={L(m.Unknown_C0h)} uD0={L(m.Unknown_D0h)} uE0={L(m.Unknown_E0h)} u150={L(m.Unknown_150h)} u160={L(m.Unknown_160h)} u180={m.Unknown_180h}");
+                }
+            if (c.Poses?.Entries != null) for (int k = 0; k < 4; k++) { var pv = c.Poses.Entries[k]; Console.WriteLine($"  poses[{k}] = {BitConverter.Int32BitsToSingle((int)pv.Unknown_0h)},{BitConverter.Int32BitsToSingle((int)pv.Unknown_4h)},{BitConverter.Int32BitsToSingle((int)pv.Unknown_8h)},{BitConverter.Int32BitsToSingle((int)pv.Unknown_Ch)} raw {pv.Unknown_0h:X8} {pv.Unknown_4h:X8} {pv.Unknown_8h:X8} {pv.Unknown_Ch:X8}"); }
+            if (c.Unknown_30h?.Entries != null) Console.WriteLine($"  unk30: {string.Join(",", Enumerable.Range(0, c.Unknown_30h.Entries.Count).Select(k => c.Unknown_30h.Entries[k]))}");
+            var bc = c.BoundComposite;
+            Console.WriteLine($"  bounds: {(bc == null ? "none" : $"{bc.NumBounds} children: {string.Join(",", (bc.Bounds?.data_items ?? new()).Select(b => b?.GetType().Name ?? "null"))}")}");
+        }
         break;
     }
     case "dds":

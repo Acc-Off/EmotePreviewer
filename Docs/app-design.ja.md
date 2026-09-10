@@ -109,7 +109,7 @@ EmotePreviewer.exe [--port 20300] [--data-dir <dir>] [--gta <dir>] [--keys <dir>
   ],
   "ped": "mp_m_freemode_01",
   "partnerPed": null,
-  "viewer": { "showHelperBones": false, "rootMotion": false, "showProps": true, "showMesh": false, "showTextures": true, "showCloth": false, "animalPeds": true, "showPartner": true, "theme": "system", "language": "auto" }
+  "viewer": { "showHelperBones": false, "rootMotion": false, "showProps": true, "showMesh": false, "showTextures": true, "showCloth": true, "animalPeds": true, "showPartner": true, "theme": "system", "language": "auto" }
 }
 ```
 
@@ -213,8 +213,8 @@ clip.bin（リトルエンディアン float32 の連結）
 - 辞書のロード結果は LRU（10 件程度）でキャッシュし、同じ辞書の別クリップは即応答
 
 - **ボーンの自由度**: `.yft` のボーンフラグ（RotX/Y/Z, TransX/Y/Z, ScaleX/Y/Z）を `BoneDef.Dofs` に持ち、`PoseSolver` はボーンが許す成分だけをトラックから受け取る（軸ごと）。体のボーンの多くは回転のみで、平行移動トラックはゲームでも無視される。同梱 `.ycd`（例: `bzzz@animation@army1`）には回転のみのボーンへの平行移動や、顔ボーン `FB_*` へのずれた位置が入っていて、全部適用すると顔と脚が歪む
-- **顔ボーン**: `FB_*` はゲーム内では表情レイヤーが毎フレーム上書きするため、体のクリップのトラックは無視する（`PoseSolver.IgnoreFacialBones`、既定オン）。ゲーム自身の表情クリップ（`facials@…`）は別の仕組みで、現状は再生対象外。無視したトラック数はクリップメタの `warnings` に載る
-- スケルトンキャッシュ（`cache/skeleton-<ped>.json`）はフラグ込みの版 2 で、旧版は読み捨てて再生成する。`BakedClip.LayoutVersion` も 2 に上げてブラウザキャッシュを無効化した
+- **顔ボーン**: `FB_*`（freemode・一般 ped）と `FACIAL_*`（主人公・カットシーン ped の高解像度表情リグ。`FACIAL_facialRoot` 配下）はゲーム内では表情レイヤーが毎フレーム上書きするため、体のクリップのトラックは無視する（`PoseSolver.IgnoreFacialBones`、既定オン）。`FACIAL_facialRoot` を無視していなかった頃は、同梱クリップの同ボーンのトラック（120° 回転）で player_zero の顔が頭蓋の中に折り畳まれた。ゲーム自身の表情クリップ（`facials@…`）は別の仕組みで、現状は再生対象外。無視したトラック数はクリップメタの `warnings` に載る
+- スケルトンキャッシュ（`cache/skeleton-<ped>.json`）はフラグ込みの版 2 で、旧版は読み捨てて再生成する。`BakedClip.LayoutVersion` も 2 に上げてブラウザキャッシュを無効化した（`FACIAL_*` を無視するようにした 0.2.2 で 3 に）
 
 ### 4.3 ゲームデータ索引
 
@@ -251,7 +251,7 @@ clip.bin（リトルエンディアン float32 の連結）
 - サブメッシュごとに `geometry.addGroup(…, index)` を切り、マテリアル配列で貼り分ける。「テクスチャ」トグル（`viewer.showTextures`）は配列と単色マテリアルを差し替えるだけ
 - アルファを切り抜きに使うかは **シェーダ名** で決める（`ShaderNames`: 既知のシェーダ名を joaat ハッシュにして引く。`alpha` / `cutout` / `decal` / `hair` / `glass` / `fur` を含む名前だけ alphaTest）。素の `ped` シェーダは体テクスチャのアルファをスペキュラマスクに使っており（`a_f_m_beach_01` の体は全面 0.4）、テクスチャ形式で判定すると胴体が消える。未知のシェーダは小道具のみ「アルファ付き形式なら切り抜き」に戻す
 - 髪のドロワブルは毛束のカードとは別に、UV を平面投影した低ポリの「殻」ジオメトリを持つ。同じ `ped_hair_spiked` でもシェーダインスタンスが分かれていて、パラメータ `orderNumber`（`0x6063CE32`）が 1（二次パス用）。通常メッシュとして描くと黒いヘルメットのように見えるので、`SubMesh.Hidden` にしてグループを作らない（描かない）
-- 布シミュレーション部位: 主人公 3 人やカットシーン ped（`cs_*`）の上着など約 60 個の部位は `.ydd` と対で `.yld`（クロス辞書）を持ち、ゲーム内では頂点位置を毎フレーム布シミュレーションで決める。`.ydd` の座標は「上着を広げた」開始形状なので、そのまま描くと静止姿勢でも上着が開いて見える。索引で `.yld` の有無（フォルダ型は `<フォルダ>/<ファイル>.yld`、単体型は `<ped>.yld`）を持ち、その ped の `cloth` を含むシェーダ名のサブメッシュを `SubMesh.Cloth` / DTO の `cloth` にする。ビューアは「布」トグル（`viewer.showCloth`、既定オフ）で描画グループに含めるかを切り替える（ボタンは読み込んだ部位に布がある時だけ有効）。`.yld` の基準姿勢（`CharacterClothController.OriginalPos`）を流し込む案は未実装
+- 布シミュレーション部位: 主人公 3 人やカットシーン ped（`cs_*`）の上着など 33 体 53 部位は `.ydd` と対で `.yld`（クロス辞書、辞書のキーは部位ファイル名の joaat）を持ち、ゲーム内では布シミュレーション（verlet）で動く。索引で `.yld` を持ち（フォルダ型は `<フォルダ>/<ファイル>.yld`、単体型は `<ped>.yld`）、その ped の `cloth` を含むシェーダ名のサブメッシュを `SubMesh.Cloth` / DTO の `cloth` にする。**布ジオメトリの頂点は通常のスキンではない**: 描画頂点（約 4,000）はシミュレーション頂点（約 200、`VerletCloth` の座標＝`CharacterClothController.OriginalPos`）3 つの重心座標で表され、番号スロット 0 / 1 / 3 がシミュ頂点、重みはスロット 1 / 0 / 2 が対応する。番号スロット 2 は 255 か、内蔵スケルトンのボーン番号（袖・襟など、重みスロット 2。その場合 3 つ目のシミュ頂点は重みスロット 3）。これを普通のボーン重みとして読むと重みの合計が 1.5 になり、頂点が原点から 1.5 倍に押し出されて上着が開いて見えた（v0.2.1 まで）。`MeshExtractor.DecodeClothVertex` がシミュ頂点のボーン重み（`BindingInfo` → `BoneIDMap` のタグ、`ClothBinding`）に展開し、上位 4 本に正規化した通常のスキンに変換する。上着は体に固定されて動く（揺れは再現しない）。ビューアの「布」トグル（`viewer.showCloth`、既定オン）で描画グループから外せる（ボタンは読み込んだ部位に布がある時だけ有効）。DevTools の `cloth` で対象一覧と重みの検証、`yld` で辞書の中身を見られる。`.yld` の `Poses`（6 ボーン分の形状）と `EdgeData`（距離拘束）、`BoundComposite`（カプセル）は揺れを実装するときの材料
 - 待機表示（エモート未選択）は bind ポーズのルートを Z 軸 180° 回した姿勢にする。`.yft` の bind ポーズは `SKEL_ROOT` に半回転が入っていて −Y を向くが、アニメーションのルートトラックは +Y を向くため、そのままだと「正面」カメラに背中を向ける
 
 ### 4.7 ped モデル（M8）

@@ -59,8 +59,8 @@ public sealed class ViewerSettings
     public bool ShowMesh { get; set; }
     /// <summary>Diffuse textures on props and the ped mesh (flat colours when off).</summary>
     public bool ShowTextures { get; set; } = true;
-    /// <summary>Draw the cloth-simulated parts of ped components (their file shape is the unsimulated starting pose).</summary>
-    public bool ShowCloth { get; set; } = false;
+    /// <summary>Draw the cloth-simulated parts of ped components (skinned to the body; the simulation itself is not reproduced).</summary>
+    public bool ShowCloth { get; set; } = true;
     /// <summary>Play animal emotes on their animal ped instead of the configured one.</summary>
     public bool AnimalPeds { get; set; } = true;
     /// <summary>Show the other ped of shared emotes.</summary>

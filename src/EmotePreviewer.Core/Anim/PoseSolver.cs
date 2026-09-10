@@ -19,7 +19,7 @@ public sealed class PoseSolver
     public bool ApplyRootMotion { get; set; }
 
     /// <summary>
-    /// Leave the facial rig (<c>FB_*</c>) in its bind pose. In-game the facial animation layer drives those bones and
+    /// Leave the facial rig (<c>FB_*</c> / <c>FACIAL_*</c>) in its bind pose. In-game the facial animation layer drives those bones and
     /// overrides body clips; community clips converted from other tools often carry garbage for them (mirrored, offset
     /// lip and brow positions) that would otherwise deform the face.
     /// </summary>

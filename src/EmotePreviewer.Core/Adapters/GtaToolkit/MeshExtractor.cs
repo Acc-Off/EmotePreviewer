@@ -3,6 +3,7 @@ using System.Numerics;
 using EmotePreviewer.Core.Gta;
 using EmotePreviewer.Core.Model;
 using EmotePreviewer.Core.Textures;
+using RageLib.Resources.Common;
 using RageLib.Resources.GTA5.PC.Drawables;
 
 namespace EmotePreviewer.Core.Adapters.GtaToolkit;
@@ -52,8 +53,12 @@ public static class MeshExtractor
     }
 
     /// <summary>Extracts the highest LOD of <paramref name="drawable"/>. Unreadable geometries become warnings, not exceptions.</summary>
-    /// <param name="clothSimulated">True when the drawable ships cloth data (<c>.yld</c>); its cloth-shader geometries are then flagged <see cref="SubMesh.Cloth"/>.</param>
-    public static MeshData Extract(Drawable drawable, string name, bool clothSimulated = false)
+    /// <param name="cloth">
+    /// The drawable's cloth binding when it ships cloth data (<c>.yld</c>). Its cloth-shader geometries are then flagged
+    /// <see cref="SubMesh.Cloth"/> and their vertices, which the file stores as barycentric weights over simulation
+    /// vertices rather than bone weights, are converted to bone weights through the binding.
+    /// </param>
+    public static MeshData Extract(Drawable drawable, string name, ClothBinding? cloth = null)
     {
         var warnings = new List<string>();
         var lod = drawable.LodGroup.LodHigh ?? drawable.LodGroup.LodMedium ?? drawable.LodGroup.LodLow ?? drawable.LodGroup.LodVeryLow ?? drawable.PrimaryLod;
@@ -66,6 +71,13 @@ public static class MeshExtractor
         var subMeshes = new List<SubMesh>();
         bool anyNormals = false, anyUvs = false, anySkin = false;
         var shaders = drawable.ShaderGroup?.Shaders?.Entries;
+        // Bone palette of the skin: the drawable's own skeleton (see BlendBoneTags) plus bones cloth vertices bring in.
+        var ownBones = drawable.Skeleton?.BoneData?.Bones;
+        var paletteTags = new List<ushort>();
+        var paletteIndex = new Dictionary<ushort, int>();
+        if (ownBones != null)
+            for (int i = 0; i < ownBones.Count; i++) { paletteTags.Add(ownBones[i].BoneId); paletteIndex.TryAdd(ownBones[i].BoneId, i); }
+        int clothVertices = 0, clothUnbound = 0;
 
         if (lod?.Models?.Entries == null) warnings.Add("drawable has no LOD models");
         else
@@ -99,6 +111,11 @@ public static class MeshExtractor
                     var hasUv = layout.TryGetValue(Semantic.TexCoord0, out var uv);
                     var hasSkin = layout.TryGetValue(Semantic.BlendIndices, out var bi) & layout.TryGetValue(Semantic.BlendWeights, out var bw) && model.IsSkinned != 0;
                     var boneIds = geom.BonesId;
+                    var shader = model.ShaderMapping != null && g < model.ShaderMapping.Count && shaders != null && model.ShaderMapping[g] < shaders.Count ? shaders[model.ShaderMapping[g]] : null;
+                    var shaderName = shader != null ? ShaderNames.Resolve(shader.ShaderHash) : null;
+                    var isCloth = cloth != null && (shaderName?.Contains("cloth", StringComparison.Ordinal) ?? false);
+                    // Cloth vertices can only be converted when the drawable's own skeleton gives the bone slots a tag.
+                    var decodeCloth = isCloth && hasSkin && ownBones != null;
 
                     // Attributes missing in one geometry but present in another are padded so the arrays stay parallel.
                     if (hasNormal && !anyNormals && baseVertex > 0) normals.AddRange(new float[baseVertex * 3]);
@@ -131,14 +148,24 @@ public static class MeshExtractor
                                     ? new Vector4(vertex[bw.offset] / 255f, vertex[bw.offset + 1] / 255f, vertex[bw.offset + 2] / 255f, vertex[bw.offset + 3] / 255f)
                                     : ReadVector(vertex[bw.offset..], bw.type);
                                 var ids = vertex.Slice(bi.offset, 4);
-                                for (int k = 0; k < 4; k++)
+                                // In cloth geometry, index slot 2 == 255 marks a simulated vertex; the others (sleeves,
+                                // collars) are ordinary skin.
+                                if (decodeCloth && ids[2] == 255)
                                 {
-                                    int local = ids[k];
-                                    // BonesId maps geometry-local bone slots to skeleton bone indices when present.
-                                    var skeletonBone = boneIds != null && local < boneIds.Count ? boneIds[local] : (ushort)local;
-                                    blendIndices.Add(skeletonBone);
+                                    clothVertices++;
+                                    if (!DecodeClothVertex(ids, w, cloth!, paletteTags, paletteIndex, blendIndices, blendWeights)) clothUnbound++;
                                 }
-                                blendWeights.Add(w.X); blendWeights.Add(w.Y); blendWeights.Add(w.Z); blendWeights.Add(w.W);
+                                else
+                                {
+                                    for (int k = 0; k < 4; k++)
+                                    {
+                                        int local = ids[k];
+                                        // BonesId maps geometry-local bone slots to skeleton bone indices when present.
+                                        var skeletonBone = boneIds != null && local < boneIds.Count ? boneIds[local] : (ushort)local;
+                                        blendIndices.Add(skeletonBone);
+                                    }
+                                    blendWeights.Add(w.X); blendWeights.Add(w.Y); blendWeights.Add(w.Z); blendWeights.Add(w.W);
+                                }
                             }
                             else
                             {
@@ -156,37 +183,25 @@ public static class MeshExtractor
                     (string name, bool embedded)? diffuse = null;
                     bool palette = false;
                     bool hidden = false;
-                    bool cloth = false;
-                    if (model.ShaderMapping != null && g < model.ShaderMapping.Count && shaders != null)
+                    if (shader != null)
                     {
-                        var shaderIndex = model.ShaderMapping[g];
-                        if (shaderIndex < shaders.Count && shaders[shaderIndex] != null)
-                        {
-                            shaderHash = shaders[shaderIndex].ShaderHash;
-                            diffuse = TextureExtractor.Diffuse(shaders[shaderIndex]);
-                            palette = TextureExtractor.HasPalette(shaders[shaderIndex]);
-                            var shaderName = ShaderNames.Resolve(shaderHash);
-                            hidden = (shaderName?.Contains("hair", StringComparison.Ordinal) ?? false)
-                                && TextureExtractor.NumericParameter(shaders[shaderIndex], TextureExtractor.OrderNumberParam) >= 1f;
-                            cloth = clothSimulated && (shaderName?.Contains("cloth", StringComparison.Ordinal) ?? false);
-                        }
+                        shaderHash = shader.ShaderHash;
+                        diffuse = TextureExtractor.Diffuse(shader);
+                        palette = TextureExtractor.HasPalette(shader);
+                        hidden = (shaderName?.Contains("hair", StringComparison.Ordinal) ?? false)
+                            && TextureExtractor.NumericParameter(shader, TextureExtractor.OrderNumberParam) >= 1f;
                     }
-                    subMeshes.Add(new SubMesh(indexStart, indexCount, shaderHash, diffuse?.name, diffuse?.embedded ?? false, palette, ShaderNames.IsCutout(shaderHash), hidden, cloth));
+                    subMeshes.Add(new SubMesh(indexStart, indexCount, shaderHash, diffuse?.name, diffuse?.embedded ?? false, palette, ShaderNames.IsCutout(shaderHash), hidden, isCloth));
                 }
             }
         }
 
         if (positions.Count == 0) warnings.Add("no readable geometry");
+        if (clothUnbound > 0) warnings.Add($"{clothUnbound} of {clothVertices} cloth vertices reference no simulation vertex");
         // Ped component drawables (the heads of most peds, every part of a few) embed the skeleton they are skinned to,
         // often a subset of the ped's, and their blend indices number that skeleton; the tags let the caller translate
-        // them to the ped's .yft skeleton.
-        ushort[]? boneTags = null;
-        var ownBones = drawable.Skeleton?.BoneData?.Bones;
-        if (anySkin && ownBones != null && ownBones.Count > 0)
-        {
-            boneTags = new ushort[ownBones.Count];
-            for (int i = 0; i < ownBones.Count; i++) boneTags[i] = ownBones[i].BoneId;
-        }
+        // them to the ped's .yft skeleton. Cloth vertices may have added bones to the palette.
+        ushort[]? boneTags = anySkin && paletteTags.Count > 0 ? paletteTags.ToArray() : null;
         List<TextureImage> embedded;
         try { embedded = TextureExtractor.Embedded(drawable); }
         catch (Exception ex) { embedded = new(); warnings.Add("embedded textures unreadable: " + ex.Message); }
@@ -227,6 +242,108 @@ public static class MeshExtractor
         }
         for (int i = 0; i < 4; i++) sum[i] = count > 0 ? sum[i] * 255f / count : 0;
         return sum;
+    }
+
+    /// <summary>
+    /// Converts one simulated cloth vertex to bone weights. The file packs it as barycentric weights over up to three
+    /// simulation vertices: index slots 0, 1 and 3 paired with weight slots 1, 0 and 2 (index slot 2 holds the 255
+    /// marker). Each simulation vertex hangs on bones through the binding; the result is the four heaviest bones,
+    /// renormalised. Returns false when nothing could be bound (the vertex is left on the root of the palette).
+    /// </summary>
+    static bool DecodeClothVertex(ReadOnlySpan<byte> ids, Vector4 w, ClothBinding cloth,
+        List<ushort> paletteTags, Dictionary<ushort, int> paletteIndex, List<ushort> blendIndices, List<float> blendWeights)
+    {
+        Span<(ushort tag, float weight)> acc = stackalloc (ushort, float)[16];
+        int n = 0;
+        void Add(Span<(ushort tag, float weight)> a, ushort tag, float weight)
+        {
+            if (weight <= 0) return;
+            for (int i = 0; i < n; i++) if (a[i].tag == tag) { a[i].weight += weight; return; }
+            if (n < a.Length) a[n++] = (tag, weight);
+        }
+        void AddSim(Span<(ushort tag, float weight)> a, int simVertex, float weight)
+        {
+            if (weight <= 0 || simVertex >= cloth.VertexCount) return;
+            foreach (var (tag, bw) in cloth.Bones[simVertex]) Add(a, tag, weight * bw);
+        }
+        AddSim(acc, ids[0], w.Y);
+        AddSim(acc, ids[1], w.X);
+        AddSim(acc, ids[3], w.Z);
+
+        // Keep the four heaviest and renormalise.
+        var top = acc[..n].ToArray();
+        Array.Sort(top, (a, b) => b.weight.CompareTo(a.weight));
+        float sum = 0;
+        int count = Math.Min(4, top.Length);
+        for (int i = 0; i < count; i++) sum += top[i].weight;
+        for (int k = 0; k < 4; k++)
+        {
+            if (k < count && sum > 0)
+            {
+                if (!paletteIndex.TryGetValue(top[k].tag, out var slot)) { slot = paletteTags.Count; paletteTags.Add(top[k].tag); paletteIndex[top[k].tag] = slot; }
+                blendIndices.Add((ushort)slot);
+                blendWeights.Add(top[k].weight / sum);
+            }
+            else
+            {
+                blendIndices.Add(0);
+                blendWeights.Add(k == 0 ? 1f : 0f);
+            }
+        }
+        return count > 0 && sum > 0;
+    }
+
+    /// <summary>Raw per-vertex position, blend indices and weights of a geometry as CSV lines (diagnostics).</summary>
+    public static IEnumerable<string> SkinDump(DrawableGeometry geom)
+    {
+        var vb = geom?.VertexBuffer;
+        var decl = vb?.Info;
+        var data = vb?.Data1?.Data ?? vb?.Data2?.Data ?? geom?.VertexData?.Data;
+        if (geom == null || vb == null || decl == null || data == null) yield break;
+        var layout = Layout(decl);
+        if (!layout.TryGetValue(Semantic.BlendIndices, out var bi) || !layout.TryGetValue(Semantic.BlendWeights, out var bw) || !layout.TryGetValue(Semantic.Position, out var pos)) yield break;
+        layout.TryGetValue(Semantic.Normal, out var nrm);
+        int stride = decl.Stride > 0 ? decl.Stride : vb.VertexStride;
+        int count = (int)Math.Min(vb.VertexCount, stride > 0 ? data.Length / stride : 0);
+        for (int v = 0; v < count; v++)
+        {
+            var vertex = data.AsSpan(v * stride, stride);
+            var p = ReadVector(vertex[pos.offset..], pos.type);
+            var n = nrm.type != default ? ReadVector(vertex[nrm.offset..], nrm.type) : Vector4.Zero;
+            yield return $"{p.X},{p.Y},{p.Z},{n.X},{n.Y},{n.Z},{vertex[bi.offset]},{vertex[bi.offset + 1]},{vertex[bi.offset + 2]},{vertex[bi.offset + 3]},{vertex[bw.offset]},{vertex[bw.offset + 1]},{vertex[bw.offset + 2]},{vertex[bw.offset + 3]}";
+        }
+    }
+
+    /// <summary>Raw blend index / weight statistics of a geometry (diagnostics); null when it is not skinned.</summary>
+    public static (int distinct, int max, float minSum, float maxSum, string sample)? SkinStats(DrawableGeometry geom)
+    {
+        var vb = geom?.VertexBuffer;
+        var decl = vb?.Info;
+        var data = vb?.Data1?.Data ?? vb?.Data2?.Data ?? geom?.VertexData?.Data;
+        if (geom == null || vb == null || decl == null || data == null) return null;
+        var layout = Layout(decl);
+        if (!layout.TryGetValue(Semantic.BlendIndices, out var bi) || !layout.TryGetValue(Semantic.BlendWeights, out var bw)) return null;
+        int stride = decl.Stride > 0 ? decl.Stride : vb.VertexStride;
+        int count = (int)Math.Min(vb.VertexCount, stride > 0 ? data.Length / stride : 0);
+        var seen = new HashSet<int>();
+        int max = 0; float minSum = float.MaxValue, maxSum = float.MinValue;
+        var sample = new System.Text.StringBuilder();
+        for (int v = 0; v < count; v++)
+        {
+            var vertex = data.AsSpan(v * stride, stride);
+            float sum = 0;
+            for (int k = 0; k < 4; k++)
+            {
+                var w = vertex[bw.offset + k] / 255f;
+                var idx = vertex[bi.offset + k];
+                sum += w;
+                if (w > 0) { seen.Add(idx); max = Math.Max(max, idx); }
+                if (v < 3) sample.Append($"{idx}:{w:F2} ");
+            }
+            if (v < 3) sample.Append("| ");
+            minSum = Math.Min(minSum, sum); maxSum = Math.Max(maxSum, sum);
+        }
+        return (seen.Count, max, minSum, maxSum, sample.ToString());
     }
 
     /// <summary>Decodes one vertex component to up to four floats.</summary>
