@@ -116,8 +116,12 @@ label.check input { accent-color: var(--accent); margin: 0; }
   font-weight: 500;
   line-height: 16px;
   vertical-align: 1px;
+  white-space: nowrap;
 }
 .tag.kind, .tag.unknown { background: var(--line); color: var(--muted); }
+.tag.slot { min-width: 18px; text-align: center; font-family: "Cascadia Mono", Consolas, monospace; }
+.tag.slot.primary { background: color-mix(in srgb, var(--focus) 18%, transparent); color: var(--focus); }
+.tag.slot.secondary { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
 
 /* ---- layout ------------------------------------------------------------ */
 .app { height: 100vh; display: grid; grid-template-rows: auto minmax(0, 1fr); }
@@ -159,6 +163,20 @@ label.check input { accent-color: var(--accent); margin: 0; }
 .filters select { flex: 1 1 100px; min-width: 0; max-width: 100%; padding: 4px 6px; font-size: 12.5px; }
 .filters.toggles { font-size: 12.5px; gap: 10px; }
 .filters .count { margin-left: auto; color: var(--muted); font-size: 12px; }
+.search-row { display: flex; gap: 6px; }
+.search-row .search { flex: 1; min-width: 0; }
+.search-row button { white-space: nowrap; padding: 4px 10px; }
+.catalog-lists { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.catalog-pane { display: flex; flex-direction: column; min-height: 0; flex: 0 1 auto; }
+.catalog-pane.secondary { flex: 1 1 0; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--panel-2) 40%, var(--panel)); }
+.catalog-split { height: 7px; flex: none; cursor: row-resize; background: var(--line); position: relative; touch-action: none; }
+.catalog-split::after { content: ""; position: absolute; left: 50%; top: 2px; width: 34px; height: 3px; margin-left: -17px; border-radius: 2px; background: var(--grid-strong); }
+.secondary-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px 2px; font-size: 12.5px; }
+.secondary-title { font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.secondary-head .count { margin-left: auto; color: var(--muted); font-size: 12px; }
+.secondary-filters { display: grid; gap: 6px; padding: 4px 10px 6px; font-size: 12.5px; }
+.secondary-filters .search { min-width: 0; padding: 4px 8px; }
+.secondary-current { padding: 2px 12px 6px; font-size: 11.5px; color: var(--muted); }
 .list { flex: 1; overflow-y: auto; min-height: 0; position: relative; }
 .catalog-empty { padding: 32px 16px; color: var(--muted); text-align: center; }
 .row {
@@ -224,6 +242,9 @@ label.check input { accent-color: var(--accent); margin: 0; }
 .detail-row dt { color: var(--muted); }
 .detail-row dd { margin: 0; overflow-wrap: anywhere; min-width: 0; }
 .detail ul.props { margin: 0; padding: 0; list-style: none; }
+.detail-clear { flex-basis: 100%; align-self: flex-start; padding: 0 4px; margin-bottom: -2px; text-align: left; }
+.detail-secondary { flex-basis: 100%; border-top: 1px dashed var(--line); padding-top: 6px; display: grid; gap: 2px; }
+.detail-secondary-head { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
 .clip-picker { flex-basis: 100%; display: flex; gap: 8px; align-items: center; }
 .clip-picker label { display: inline-flex; gap: 8px; align-items: center; }
 .clip-picker select { max-width: 60vw; }

@@ -181,7 +181,7 @@ public sealed class CatalogService : IDisposable
                     pReason == null, pReason, p.AnimalPed, PartnerPlacementDto.Resolve(e.Placement, p.Placement));
             }
             entries.Add(new EmoteDto(e.Id, e.Source, e.Category, e.Command, e.Label, EmoteDto.KindName(e.Kind), e.Dictionary, e.Clip, e.Name,
-                e.Loop, e.Move, e.DurationMs, e.ExitEmote, Props(e), e.IsCustom, reason == null, reason, e.AnimalPed,
+                e.Loop, e.Move, e.AnimFlag, EmoteDto.SlotName(e), e.UpperBody, e.DurationMs, e.ExitEmote, Props(e), e.IsCustom, reason == null, reason, e.AnimalPed,
                 e.StartDelayMs, e.PartnerCommand, partner));
         }
         var counts = catalog.Entries.GroupBy(e => e.Source).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);

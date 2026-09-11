@@ -58,7 +58,7 @@ public static class ScullyLoader
                     Kind = kind, Name = name,
                     Dictionary = kind == EmoteKind.Walk ? name : null,
                     Clip = kind == EmoteKind.Walk && name != null ? EmoteEntry.WalkClip : null,
-                    Loop = kind == EmoteKind.Walk,
+                    AnimFlag = kind == EmoteKind.Walk ? AnimFlags.Loop : 0,
                 });
             }
         }
@@ -85,13 +85,22 @@ public static class ScullyLoader
             Placement = ReadPlacement(shared),
             StartDelayMs = opts != null ? Int(opts["Delay"]) ?? 0 : 0,
             Dictionary = Str(t["Dictionary"]), Clip = Str(t["Animation"]),
-            Loop = flags != null && Bool(flags["Loop"]),
-            Move = flags != null && Bool(flags["Move"]),
+            AnimFlag = ReadFlag(flags),
             DurationMs = opts != null ? Int(opts["Duration"]) : null,
             ExitEmote = opts != null ? Str(opts["ExitEmote"]) : null,
             Props = props,
             PedTypes = Table(t["PedTypes"]) is { } pt ? Array(pt).Select(Str).Where(s => s != null).Select(s => s!).ToList() : System.Array.Empty<string>(),
         };
+    }
+
+    /// <summary>The menu's <c>movementFlag = Flags.Stuck and 50 or Flags.Move and 51 or Flags.Loop and 1 or 0</c>.</summary>
+    static int ReadFlag(LuaTable? flags)
+    {
+        if (flags == null) return 0;
+        if (Bool(flags["Stuck"])) return AnimFlags.Stuck;
+        if (Bool(flags["Move"])) return AnimFlags.Moving;
+        if (Bool(flags["Loop"])) return AnimFlags.Loop;
+        return 0;
     }
 
     /// <summary><c>Options.Shared</c>: <c>Attach</c> + <c>Bone</c> + <c>Placement</c>, or the four offsets.</summary>

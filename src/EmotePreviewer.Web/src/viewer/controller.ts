@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { LoadedClip, LoadedMesh } from "../shared/api";
-import type { PartnerPlacementDto, PropDto, SkeletonDto } from "../shared/types";
+import type { EmoteSlot, PartnerPlacementDto, PropDto, SkeletonDto } from "../shared/types";
 import { PedMesh } from "./ped";
 import { Playback, Timeline } from "./playback";
 import { PropLayer } from "./props";
@@ -19,13 +19,15 @@ export interface ClipTiming {
   loop: boolean;
 }
 
-/** Everything that belongs to one ped: skeleton, stick figure, props, mannequin and the clip posing it. */
+const NO_TIMING: ClipTiming = { delay: 0, loop: false };
+
+/** Everything that belongs to one ped: skeleton, stick figure, props, mannequin and the clips posing it (one per animation slot). */
 class RigSlot {
   readonly rig: SkeletonRig;
   readonly props: PropLayer;
   readonly ped: PedMesh;
   readonly playback: Playback;
-  timing: ClipTiming = { delay: 0, loop: false };
+  readonly timing: Record<EmoteSlot, ClipTiming> = { primary: NO_TIMING, secondary: NO_TIMING };
 
   constructor(skeleton: SkeletonDto, scene: Scene, textures: TextureCache) {
     this.rig = new SkeletonRig(skeleton, scene);
@@ -34,18 +36,21 @@ class RigSlot {
     this.playback = new Playback(this.rig);
   }
 
-  /** Clip time for a timeline time: waits out the delay, then wraps or holds at the end. */
-  clipTime(t: number): number {
-    const local = t - this.timing.delay;
-    const d = this.playback.duration;
+  /** Clip time of a layer for a timeline time: waits out the delay, then wraps or holds at the end. Each layer keeps its own phase. */
+  clipTime(t: number, layer: EmoteSlot): number {
+    const timing = this.timing[layer];
+    const local = t - timing.delay;
+    const d = this.playback.duration(layer);
     if (local <= 0 || d <= 0) return 0;
     if (local < d) return local;
-    return this.timing.loop ? local % d : d;
+    return timing.loop ? local % d : d;
   }
 
-  /** Seconds of timeline this clip occupies (delay + duration; a looping clip does not extend the timeline on its own). */
+  /** Seconds of timeline this ped occupies: the longest "delay + duration" of its layers (a looping clip does not extend the timeline on its own). */
   get extent(): number {
-    return this.playback.clip ? this.timing.delay + this.playback.duration : 0;
+    let extent = 0;
+    for (const layer of ["primary", "secondary"] as const) if (this.playback.clip(layer)) extent = Math.max(extent, this.timing[layer].delay + this.playback.duration(layer));
+    return extent;
   }
 
   dispose(): void {
@@ -95,10 +100,10 @@ export class ViewerController {
     return this.slots[slot] !== null;
   }
 
-  /** The main rig's clip time (what the transport shows as frames). */
-  get mainTime(): number {
-    const main = this.slots.main;
-    return main ? main.clipTime(this.timeline.time) : 0;
+  /** The clip time a layer of a rig currently shows (what the transport shows as frames). */
+  layerTime(slot: Slot, layer: EmoteSlot): number {
+    const rigSlot = this.slots[slot];
+    return rigSlot ? rigSlot.clipTime(this.timeline.time, layer) : 0;
   }
 
   /** (Re)builds a slot's bone hierarchy. A clip that was loaded is dropped; the caller reloads it. */
@@ -132,37 +137,43 @@ export class ViewerController {
     this.dirty = true;
   }
 
-  /** Loads a clip into a slot. The main clip restarts the timeline; the partner joins it where it is. */
-  loadClip(slot: Slot, clip: LoadedClip, timing: ClipTiming, autoplay = true): void {
+  /**
+   * Loads a clip into a layer of a rig. The main ped's primary clip restarts the timeline; a secondary and the partner
+   * join it where it is (starting a secondary in the game does not change the primary's phase either).
+   */
+  loadClip(slot: Slot, layer: EmoteSlot, clip: LoadedClip, timing: ClipTiming, autoplay = true): void {
     const rigSlot = this.slots[slot];
     if (!rigSlot) return;
-    rigSlot.timing = timing;
-    rigSlot.playback.load(clip);
+    const wasEmpty = this.timeline.duration <= 0;
+    rigSlot.timing[layer] = timing;
+    rigSlot.playback.load(layer, clip);
     this.updateDuration();
-    if (slot === "main") {
+    if (slot === "main" && layer === "primary") {
       this.timeline.seek(0);
       if (autoplay) this.timeline.play();
       else this.timeline.pause();
+    } else if (wasEmpty && autoplay) {
+      this.timeline.play();
     }
     this.dirty = true;
   }
 
-  /** Replaces a slot's clip data without touching the timeline (a rewritten .ycd picked up by a rescan): the playhead and play state stay. */
-  replaceClip(slot: Slot, clip: LoadedClip): void {
+  /** Replaces a layer's clip data without touching the timeline (a rewritten .ycd picked up by a rescan): the playhead and play state stay. */
+  replaceClip(slot: Slot, layer: EmoteSlot, clip: LoadedClip): void {
     const rigSlot = this.slots[slot];
     if (!rigSlot) return;
-    rigSlot.playback.load(clip);
+    rigSlot.playback.load(layer, clip);
     this.updateDuration();
     this.dirty = true;
   }
 
-  clearClip(slot: Slot): void {
+  clearClip(slot: Slot, layer: EmoteSlot): void {
     const rigSlot = this.slots[slot];
     if (!rigSlot) return;
-    rigSlot.playback.clear();
-    rigSlot.timing = { delay: 0, loop: false };
+    rigSlot.playback.clear(layer);
+    rigSlot.timing[layer] = NO_TIMING;
     this.updateDuration();
-    if (slot === "main") {
+    if (slot === "main" && !rigSlot.playback.hasClip) {
       this.timeline.pause();
       this.timeline.seek(0);
     }
@@ -221,14 +232,10 @@ export class ViewerController {
   setPedMesh(slot: Slot, components: LoadedMesh[]): void {
     const rigSlot = this.slots[slot];
     if (!rigSlot) return;
-    const clip = rigSlot.playback.clip;
     rigSlot.ped.set(components);
-    if (clip) {
-      // Binding reset the bones to the bind pose; rebuild the action so the next tick poses them again.
-      rigSlot.playback.load(clip);
-    } else {
-      rigSlot.rig.setIdlePose();
-    }
+    // Binding reset the bones to the bind pose; rebuild the actions so the next tick poses them again.
+    if (rigSlot.playback.hasClip) rigSlot.playback.rebind();
+    else rigSlot.rig.setIdlePose();
     this.dirty = true;
   }
 
@@ -318,7 +325,7 @@ export class ViewerController {
     const moved = this.timeline.advance(dt);
     const t = this.timeline.time;
     for (const s of this.ordered()) {
-      if ((moved || this.dirty) && s.playback.clip) s.playback.pose(s.clipTime(t));
+      if ((moved || this.dirty) && s.playback.hasClip) s.playback.pose(s.clipTime(t, "primary"), s.clipTime(t, "secondary"));
       s.rig.update();
     }
     this.dirty = false;

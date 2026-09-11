@@ -162,6 +162,7 @@ EmotePreviewer.exe [--port 20300] [--data-dir <dir>] [--gta <dir>] [--keys <dir>
 | GET | `/api/emotes/{id}/clip?ped=` | 焼き込み結果のメタデータ（fps, frames, duration, boneCount, hasRootMotion, skeleton, warnings）。`ped` 省略時は動物エモートなら対応する動物 ped、それ以外は設定中の ped |
 | GET | `/api/emotes/{id}/clip.bin?ped=` | 焼き込み結果の本体（`application/octet-stream`、§4.2 のレイアウト） |
 | GET | `/api/clips/{dict}/{clip}.bin?ped=` | 辞書・クリップ直接指定版（手動選択用）。メタは `/clip` 相当 |
+| GET | `/api/clipsets/{set}/{clip}` / `.bin?ped=` | 移動クリップセット（`move_m@generic` など）のクリップを `clip_sets.ymt` で辞書に解決して焼く。ビューアのニュートラル姿勢（`idle`）用。ゲームデータ未準備なら 503、セットに無ければ `CLIPSET_NOT_FOUND` |
 | GET | `/api/props/{model}` / `.bin` | 小道具メッシュのメタと頂点（§4.5）。リソース同梱の `.ydr` を優先。メタに `textureScope` と解決済み `textures[]` |
 | GET | `/api/peds` | ゲームデータ内の ped 一覧（名前・格納形式 `folder` / `component`・分類） |
 | GET | `/api/peds/{ped}` | ped の既定部位（スロット・ファイル・頂点数）とボーン数 |
@@ -273,6 +274,19 @@ clip.bin（リトルエンディアン float32 の連結）
 - 2 体目の ped は `settings.partnerPed`（null = 主と同じ）、相手側が動物エモートならその動物 ped（`viewer.animalPeds` に従う）。HUD の「相手」トグル（`viewer.showPartner`）、相手 ped のボタン（主と同じピッカー）、詳細パネルの相手へのリンク・配置の説明・開始遅延。相手側を選ぶと主・相手が入れ替わるだけで同じ画になる。手動クリップ選択中は相手を出さない
 - 相手が解決しない（`partner: null`、`partnerCommand` は残る）・相手のクリップが無い場合は主側だけを再生して詳細パネルに理由を出す。`devtools shared [--gta-check]` で全ペアの解決状況・配置方式・クリップ有無を一覧できる
 
+### 4.9 エモートの重ね合わせ（M10）
+
+ゲームの 2 スロット再生（プライマリ = 全身 1 本、セカンダリ = その上に重なる 1 本。flag の SECONDARY(32) で決まり、UPPERBODY(16) なら上半身だけ）をビューアで再現する。規則は実機で確認したもの（private の調査メモ §6）。
+
+- **flag**: `EmoteEntry.AnimFlag` を両ローダーで決める。rpemotes は `Flag`（明示）→ `onFootFlag`（`AnimFlag.LOOP`=1 / `STUCK`=50 / `MOVING`=51）→ 旧ブール（`EmoteMoving`→51、`EmoteLoop`→1、`EmoteStuck`→50。EmoteMenu.lua の変換と同じ順）→ 0。scully は `Flags.Stuck and 50 or Flags.Move and 51 or Flags.Loop and 1 or 0`。`Loop` / `Move` / `UpperBody` は flag のビット（LOOPING=1 / SECONDARY=32 / UPPERBODY=16）から導く。MOVING(51) は LOOPING を含むので `Loop = true`（以前は `flag == 1` だけを Loop にしていた）。DTO は `flag` / `slot`（`primary` / `secondary`）/ `upperBody`
+- **合成規則**（`viewer/playback.ts` の `Playback`）: 1 つの `AnimationMixer` にスロットごとの `AnimationAction` を持ち、トラックを重ならないように分ける。セカンダリが持つトラックは「上半身マスク（`SKEL_Spine_Root` のサブツリー。`SkeletonRig.upperBodyMask`）∩ セカンダリのクリップが動かすボーン（`meta.animatedBones`）」、プライマリはそれ以外の全ボーン。骨盤・脚・`SKEL_ROOT`（位置も回転も）は常にプライマリ。境界の重みは 0/1 で部分ブレンドはしない
+- **ROOT の付け替え**: セカンダリが `SKEL_ROOT` を動かすときは、`Spine_Root` のローカル回転を `inv(プライマリの ROOT 回転) × セカンダリの ROOT 回転 × Spine_Root 自身のローカル回転` に置き換える（`applyReRoot`）。3 つとも焼き込みデータから毎回サンプルする。three.js の `PropertyMixer` は評価値が前回と同じボーンを書き戻さないので、ボーンの現在値に掛けると同じ時刻を再表示するたびに回転が重なる（実装中に踏んだ）。プライマリの ROOT はルートモーション込みのボーンではなくデータから読む（mover の回転は胴体にも掛かるのが正しい）。セカンダリが ROOT を持たないときは付け替えない
+- **時間軸**: `Timeline` は 1 本のまま、`RigSlot.timing` をスロットごとに持ち、`clipTime(t, layer)` で各スロットが独立にループ／最終姿勢保持する。プライマリの読み込みだけが時間軸を 0 に戻し、セカンダリは途中参加（ゲームでもセカンダリ開始でプライマリの位相は変わらない）。セカンダリの開始オフセットは未対応
+- **ニュートラル = idle**: セカンダリが流れていてプライマリが空のときは、歩き方の既定クリップセット `move_m@generic` / `move_f@generic`（ped 名に `_f_` があれば女性）の `idle` をプライマリとして流す（`/api/clipsets/...`）。動物 ped（`a_c_*`）は対象外（idle が無いので、動物のセカンダリは全身で流す）。何も選んでいないときはクリップを流さず（時間軸も止まる。idle を流していた頃はシークバーが動いて気になった）、rig は従来の「A ポーズ + ROOT 半回転」で立つ。ゲームデータ未準備時と読み込み失敗時も同じ
+- **flag がスロットを決める**（`store.ts` / `Viewer.tsx`）: 上段の選択 `selectedId` は flag のスロットで再生する。プライマリなら全身、セカンダリ（flag に SECONDARY。rpemotes / scully とも 51 が大半）なら実機どおり上半身だけを idle の脚の上に流し、クリップの脚トラックは捨てる（S 1,368 件のうち 1,006 件は脚のトラックを持ち、389 件は 10° 超で脚が動く: boxing、selfie8、countdown など。実機で boxing / selfie8 が両メニューとも上半身だけなのを確認済み）。全身を見たいときは「辞書内のクリップを選ぶ」（手動クリップは常に全身）。下段の選択 `secondaryId` はセカンダリ層。**合成オン中は上段にプライマリだけ、下段にセカンダリだけを出す**ので、ゲームで同時に流せない組み合わせ（同スロット同士）は選べない。S を選んだ状態で合成をオンにすると、その S は下段へ移り上段は空になる。経緯: 当初は「主は flag のスロットへ、下段は反対のスロットに自動絞り込み、詳細で上書き」→ 分かりにくいとの指摘で一度「リストがスロットを決める（上段は常に全身）」にしたが、実機と違う絵（S の脚が動く）になるため 2026-09-11 に現行に落ち着いた
+- **UI**: 左ペインは上段と下段（検索欄の横の「合成」で開閉、境界はドラッグで移動して `localStorage` に記憶。閉じるとセカンダリは解除、上段の選択はそのまま）。下段の絞り込みは下段自身の検索欄とソース・カテゴリ・種別の選択（上段と同じ 3 つ。`FilterSelects` を共用。上段の絞り込みは効かない）。加えて上段のエモートの ped 種別（`ped`: 動物 ped 名か null = 人間）と一致するものだけを暗黙に出す（犬のエモートは同じ犬のエモートの下でだけ。人間か未選択なら人間のもの）。どちらのリストも選択中の行をもう一度クリックすると解除。バッジは合成オフの上段でセカンダリの行にだけ S を出す（P は情報が無いので出さない。合成オン中は両リストとも均質なので出さない）。詳細パネルに「✕ 解除」（Esc でも主を解除）とセカンダリの行（解除ボタン付き）。トランスポートのフレーム表示は主のクリップ（主が無ければセカンダリ）。小道具は両スロットの分を付ける。共有エモートの相手 ped は従来どおり主に付随（相手 rig はプライマリだけ）
+- 検証: private の `tools/diag/preview-res`（既知角度の診断クリップ）を folder resource として読ませ、`tools/shot-layer.mjs` で撮って実機画像と照合した（脚だけ倒れる／胴体だけ倒れる／前傾が直立に戻る／腕だけ／脚・骨盤は動かない／脚 4 秒・腕 3 秒で独立に回る／pushup + crossarms／sit + clap）
+
 ## 5. フロントエンド（EmotePreviewer.Web）
 
 FxDeck と同じ **Vite + React + TypeScript + Zustand**。UI ライブラリは使わない。three.js は npm から取り込み、CDN は使わない。
@@ -298,6 +312,7 @@ src/EmotePreviewer.Web/
 - 一覧: 検索語（コマンド・ラベル・辞書・クリップ）、ソース、カテゴリ、種別、プレビュー可否、小道具あり、同梱 `.ycd` で絞り込み。キーボードで上下移動して即プレビュー。連打時は最後のリクエストだけ反映（古い応答は捨てる）
 - 詳細: 辞書・クリップ・長さ・ループ／移動フラグ・小道具・退出エモート・プレビュー不可の理由。クリップ不一致のときは辞書内クリップ一覧から選び直せる
 - ビューア: 再生／停止、スクラブ、速度、ループ、補助ボーン（`MH_/PH_/IK_/RB_/SM_/EO_`）表示、ルートモーション、カメラプリセット（正面・側面・上）、小道具の表示切替、共有エモートの相手の表示切替と相手 ped の選択
+- 重ね合わせ（§4.9）: flag がセカンダリのエモートは単独でも実機どおり上半身だけ（脚は歩き方の idle）。一覧の「合成」で下段を開くと上段はプライマリだけ、下段はセカンダリだけになり、両方選ぶと同時再生。Esc / 「✕ 解除」で主を解除
 - three.js の描画は React の外で管理する（`Viewer.tsx` は canvas を 1 つ持ち、`useEffect` で scene を生成・破棄する）。フレームごとの状態を React state に流さない
 - テーマは検証用ビューアと同じ CSS 変数方式（システム追従 + 明示指定）
 - UI 文字列は日本語を正とし、英語を追随させる（FxDeck の `locales/ja.ts` / `en.ts` と同じ方式）。ハードコードしない
@@ -340,6 +355,7 @@ GTA が無いとスケルトンが取れないため、同梱 `.ycd` だけの�
 - 索引キャッシュは入れない（索引 1.1〜1.4 秒、起動から準備完了まで約 1.8 秒）
 - テクスチャは表示しない（無地の小道具・マネキン）→ M7 で撤回し、ディフューズだけ貼る
 - 共有エモートの配置はゲーム側のコード（rpemotes `Syncing.lua`、scully `main.lua`）の意味に合わせ、「自分のエモートの Attach は自分を相手に貼る」とする
+- エモートの重ね合わせは 2 スロット（プライマリ全身 + セカンダリ上半身マスク）で、トラックを分けた 2 つの `AnimationAction`。部分ブレンドはしない。ニュートラルは歩き方の `idle`
 - トレイ常駐はしない。ログドロワーも付けない
 - API テストは `WebApplicationFactory` ではなく実際の Kestrel を空きポートで起動して行う
 

@@ -17,6 +17,26 @@ export function boneObjectName(index: number, rigKey = ""): string {
 
 let rigCounter = 0;
 
+/** The bone whose subtree the game's UPPERBODY mask covers. */
+export const UPPER_BODY_ROOT = "SKEL_Spine_Root";
+
+/** Indices of `root` and every bone under it; every bone except index 0 when `root` is -1. */
+export function subtree(def: SkeletonDto, root: number): Set<number> {
+  const set = new Set<number>();
+  if (root < 0) {
+    for (const b of def.bones) if (b.index !== 0) set.add(b.index);
+    return set;
+  }
+  set.add(root);
+  // Bones are listed parents first in every .yft seen so far, but walk up the parent chain anyway to be safe.
+  for (const b of def.bones) {
+    let p = b.parent;
+    while (p >= 0 && p !== root) p = def.bones[p].parent;
+    if (p === root) set.add(b.index);
+  }
+  return set;
+}
+
 /**
  * The ped skeleton as a `THREE.Bone` hierarchy, plus a stick figure (`LineSegments` between SKEL_ bones, faint lines
  * for helper bones, points at the joints) that follows the bones every frame.
@@ -35,6 +55,14 @@ export class SkeletonRig {
   readonly key: string;
   readonly bones: THREE.Bone[] = [];
   readonly def: SkeletonDto;
+  /** Index of SKEL_Spine_Root (-1 when the skeleton has none, e.g. animals). */
+  readonly spineRootIndex: number;
+  /**
+   * Bones a secondary emote with the UPPERBODY flag drives: the SKEL_Spine_Root subtree (spine, neck, head, clavicles,
+   * arms, fingers and their helper bones). SKEL_ROOT, the pelvis, the legs and the IK / skirt bones stay with the
+   * primary clip. Skeletons without that bone fall back to "everything but the root".
+   */
+  readonly upperBodyMask: ReadonlySet<number>;
 
   private readonly skelSegments: [number, number][] = [];
   private readonly helperSegments: [number, number][] = [];
@@ -73,6 +101,9 @@ export class SkeletonRig {
       else this.entity.add(bone);
     }
     this.resetPose();
+
+    this.spineRootIndex = def.bones.find((b) => b.name === UPPER_BODY_ROOT)?.index ?? -1;
+    this.upperBodyMask = subtree(def, this.spineRootIndex);
 
     // Segments: SKEL_ bones connect to their nearest SKEL_ ancestor so hidden helper bones do not break the figure.
     for (const b of def.bones) {

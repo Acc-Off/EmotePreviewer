@@ -54,7 +54,7 @@ public static class RpEmotesLoader
             case "Expressions":
                 return new EmoteEntry { Source = sourceId, Category = category, Command = command, Label = Str(arr.ElementAtOrDefault(1)) ?? command, Kind = EmoteKind.Expression, Name = a0 };
             case "Walks":
-                return new EmoteEntry { Source = sourceId, Category = category, Command = command, Label = Str(arr.ElementAtOrDefault(1)) ?? command, Kind = EmoteKind.Walk, Name = a0, Dictionary = a0, Clip = EmoteEntry.WalkClip, Loop = true };
+                return new EmoteEntry { Source = sourceId, Category = category, Command = command, Label = Str(arr.ElementAtOrDefault(1)) ?? command, Kind = EmoteKind.Walk, Name = a0, Dictionary = a0, Clip = EmoteEntry.WalkClip, AnimFlag = AnimFlags.Loop };
         }
 
         if (ScenarioTypes.Contains(a0))
@@ -70,7 +70,7 @@ public static class RpEmotesLoader
             var p2 = Str(opts["SecondProp"]);
             if (p2 != null) props.Add(new EmoteProp(p2, Int(opts["SecondPropBone"]) ?? 0, Vec6(Table(opts["SecondPropPlacement"]))));
         }
-        var flag = opts != null ? Int(opts["onFootFlag"]) : null; // AnimFlag: LOOP=1, STUCK=50, MOVING=51
+        var flag = ReadFlag(opts);
         // Shared emotes name the other side as the fourth element; a missing name means both peds play the same clip.
         var shared = string.Equals(category, "Shared", StringComparison.OrdinalIgnoreCase);
         return new EmoteEntry
@@ -79,8 +79,7 @@ public static class RpEmotesLoader
             Label = Str(arr.ElementAtOrDefault(2)) ?? command,
             Kind = EmoteKind.Animation,
             Dictionary = a0, Clip = Str(arr.ElementAtOrDefault(1)),
-            Loop = flag == 1 || (opts != null && Bool(opts["EmoteLoop"])),
-            Move = flag == 51 || (opts != null && Bool(opts["EmoteMoving"])),
+            AnimFlag = flag,
             DurationMs = opts != null ? Int(opts["EmoteDuration"]) : null,
             ExitEmote = opts != null ? Str(opts["ExitEmote"]) : null,
             Props = props,
@@ -89,6 +88,22 @@ public static class RpEmotesLoader
             Placement = shared ? ReadPlacement(opts) : null,
             StartDelayMs = opts != null ? Int(opts["StartDelay"]) ?? 0 : 0,
         };
+    }
+
+    /// <summary>
+    /// The flag Emote.lua passes to TaskPlayAnim on foot: an explicit <c>Flag</c> wins, then <c>onFootFlag</c>
+    /// (<c>AnimFlag.LOOP / STUCK / MOVING</c>); the legacy booleans are converted the way EmoteMenu.lua does
+    /// (<c>EmoteMoving</c> → MOVING, <c>EmoteLoop</c> → LOOP, <c>EmoteStuck</c> → STUCK); nothing means 0.
+    /// </summary>
+    static int ReadFlag(LuaTable? opts)
+    {
+        if (opts == null) return 0;
+        if (Int(opts["Flag"]) is { } explicitFlag) return explicitFlag;
+        if (Int(opts["onFootFlag"]) is { } onFoot) return onFoot;
+        if (Bool(opts["EmoteMoving"])) return AnimFlags.Moving;
+        if (Bool(opts["EmoteLoop"])) return AnimFlags.Loop;
+        if (Bool(opts["EmoteStuck"])) return AnimFlags.Stuck;
+        return 0;
     }
 
     /// <summary><c>Attachto</c> wins over the sync offsets (the menu attaches first, which makes the offset moot).</summary>

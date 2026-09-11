@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, type LoadedClip, type LoadedMesh } from "../shared/api";
 import { errorText, useT } from "../shared/i18n";
 import { PedPicker, usePedList } from "../shared/PedPicker";
-import { selectEntry, useAppStore } from "../shared/store";
-import type { ClipMetaDto, PropDto, ViewerSettings } from "../shared/types";
+import { selectEntry, selectSecondary, useAppStore, type EmoteRow } from "../shared/store";
+import type { ClipMetaDto, EmoteSlot, PropDto, ViewerSettings } from "../shared/types";
 import { ViewerController, type ClipTiming, type Slot } from "./controller";
 import type { CameraPreset } from "./scene";
 
@@ -12,28 +12,93 @@ type ViewState =
   | { kind: "waitingGta" }
   | { kind: "notPreviewable"; reason: string }
   | { kind: "loading" }
-  | { kind: "ready"; meta: ClipMetaDto }
+  | { kind: "ready"; meta: ClipMetaDto; layer: EmoteSlot }
   | { kind: "error"; message: string };
 
 const DEFAULT_PED = "mp_m_freemode_01";
+const LAYERS: EmoteSlot[] = ["primary", "secondary"];
 
-/** What one slot of the viewer should show: which ped, which clip (with its timing) and which props. */
+/** One clip to load into a layer of a rig, with how it sits on the timeline. */
+interface ClipSpec {
+  key: string;
+  timing: ClipTiming;
+  load: (signal: AbortSignal) => Promise<LoadedClip>;
+}
+
+/** What one rig of the viewer should show: which ped, which clip per animation slot and which props. */
 interface SlotSpec {
   ped: string;
-  clip: { key: string; timing: ClipTiming; load: (signal: AbortSignal) => Promise<LoadedClip> } | null;
+  clips: Record<EmoteSlot, ClipSpec | null>;
   props: PropDto[];
 }
 
 type ClipState = { kind: "idle" } | { kind: "loading" } | { kind: "ready"; meta: ClipMetaDto } | { kind: "error"; message: string };
 
 /**
- * Drives one slot of the controller from a spec: loads the ped's skeleton (from the server's cache before indexing,
- * from the game data afterwards), then the mannequin, the props and the clip. A null spec empties the slot.
+ * Loads one layer's clip into the controller; the previous request is aborted when the selection changes quickly.
+ * A rebuilt catalog (a rescan, possibly automatic after a converter wrote the file) may mean the clip on screen was
+ * rewritten: its meta is re-fetched, and when the ETag differs the data is swapped in place, keeping the playhead.
+ */
+function useLayerClip(controllerRef: React.RefObject<ViewerController | null>, slot: Slot, layer: EmoteSlot, spec: ClipSpec | null, skeletonReady: boolean, catalogRevision: number): ClipState {
+  const [state, setState] = useState<ClipState>({ kind: "idle" });
+  const key = spec?.key ?? null;
+  const delay = spec?.timing.delay ?? 0;
+  const loop = spec?.timing.loop ?? false;
+  useEffect(() => {
+    const controller = controllerRef.current;
+    if (!spec || !skeletonReady) {
+      controller?.clearClip(slot, layer);
+      setState({ kind: "idle" });
+      return;
+    }
+    const abort = new AbortController();
+    setState({ kind: "loading" });
+    spec
+      .load(abort.signal)
+      .then((clip: LoadedClip) => {
+        if (abort.signal.aborted) return;
+        controllerRef.current?.loadClip(slot, layer, clip, { delay, loop }, true);
+        setState({ kind: "ready", meta: clip.meta });
+      })
+      .catch((err: unknown) => {
+        if (abort.signal.aborted) return;
+        const message = err instanceof ApiError ? errorText(err.code, err.message) : err instanceof Error ? err.message : String(err);
+        controllerRef.current?.clearClip(slot, layer);
+        setState({ kind: "error", message });
+      });
+    return () => abort.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controllerRef, slot, layer, key, skeletonReady, delay, loop]);
+
+  const loadedETag = useRef<string | null>(null);
+  useEffect(() => {
+    loadedETag.current = state.kind === "ready" ? state.meta.eTag : null;
+  }, [state]);
+  useEffect(() => {
+    if (!spec || !skeletonReady || loadedETag.current === null) return;
+    const abort = new AbortController();
+    const load = spec.load;
+    load(abort.signal)
+      .then((clip: LoadedClip) => {
+        if (abort.signal.aborted || clip.meta.eTag === loadedETag.current) return;
+        controllerRef.current?.replaceClip(slot, layer, clip);
+        setState({ kind: "ready", meta: clip.meta });
+      })
+      .catch(() => undefined);
+    return () => abort.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogRevision]);
+
+  return state;
+}
+
+/**
+ * Drives one rig of the controller from a spec: loads the ped's skeleton (from the server's cache before indexing,
+ * from the game data afterwards), then the mannequin, the props and the clips. A null spec empties the rig.
  */
 function useRigSlot(controllerRef: React.RefObject<ViewerController | null>, slot: Slot, spec: SlotSpec | null, gtaReady: boolean, statusSkeleton: string | null, showMesh: boolean, catalogRevision: number) {
   const [rigPed, setRigPed] = useState<string | null>(null);
   const [skeletonError, setSkeletonError] = useState<string | null>(null);
-  const [clipState, setClipState] = useState<ClipState>({ kind: "idle" });
   const [meshState, setMeshState] = useState<"none" | "loading" | "ready" | "error">("none");
   const [hasCloth, setHasCloth] = useState(false);
   const ped = spec?.ped ?? null;
@@ -104,9 +169,10 @@ function useRigSlot(controllerRef: React.RefObject<ViewerController | null>, slo
   // Props: meshes that are unavailable are skipped silently.
   const props = spec?.props ?? [];
   const propKey = props.map((p) => `${p.model}@${p.bone}:${p.available}`).join("|");
+  const clipKeys = LAYERS.map((l) => spec?.clips[l]?.key ?? "").join("|");
   useEffect(() => {
     const controller = controllerRef.current;
-    if (!spec || props.length === 0 || !skeletonReady || !spec.clip) {
+    if (!spec || props.length === 0 || !skeletonReady || (!spec.clips.primary && !spec.clips.secondary)) {
       controller?.clearProps(slot);
       return;
     }
@@ -124,62 +190,23 @@ function useRigSlot(controllerRef: React.RefObject<ViewerController | null>, slo
     });
     return () => abort.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [controllerRef, slot, propKey, spec?.clip?.key, skeletonReady, rigPed]);
+  }, [controllerRef, slot, propKey, clipKeys, skeletonReady, rigPed]);
 
-  // The clip, baked for the slot's ped; the previous request is aborted when the selection changes quickly.
-  const clipKey = spec?.clip?.key ?? null;
-  const timing = spec?.clip?.timing;
-  const delay = timing?.delay ?? 0;
-  const loop = timing?.loop ?? false;
-  useEffect(() => {
-    const controller = controllerRef.current;
-    if (!spec?.clip || !skeletonReady) {
-      controller?.clearClip(slot);
-      setClipState({ kind: "idle" });
-      return;
-    }
-    const abort = new AbortController();
-    setClipState({ kind: "loading" });
-    spec.clip
-      .load(abort.signal)
-      .then((clip: LoadedClip) => {
-        if (abort.signal.aborted) return;
-        controllerRef.current?.loadClip(slot, clip, { delay, loop }, true);
-        setClipState({ kind: "ready", meta: clip.meta });
-      })
-      .catch((err: unknown) => {
-        if (abort.signal.aborted) return;
-        const message = err instanceof ApiError ? errorText(err.code, err.message) : err instanceof Error ? err.message : String(err);
-        controllerRef.current?.clearClip(slot);
-        setClipState({ kind: "error", message });
-      });
-    return () => abort.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [controllerRef, slot, clipKey, skeletonReady, delay, loop]);
+  const primary = useLayerClip(controllerRef, slot, "primary", spec?.clips.primary ?? null, skeletonReady, catalogRevision);
+  const secondary = useLayerClip(controllerRef, slot, "secondary", spec?.clips.secondary ?? null, skeletonReady, catalogRevision);
 
-  // A rebuilt catalog (a rescan, possibly automatic after a converter wrote the file) may mean the clip on screen was
-  // rewritten: re-fetch its meta, and when the ETag differs swap the data in place, keeping the playhead. An unchanged
-  // clip costs one small request; the .bin comes from the browser cache.
-  const loadedETag = useRef<string | null>(null);
-  useEffect(() => {
-    loadedETag.current = clipState.kind === "ready" ? clipState.meta.eTag : null;
-  }, [clipState]);
-  useEffect(() => {
-    if (!spec?.clip || !skeletonReady || loadedETag.current === null) return;
-    const abort = new AbortController();
-    const load = spec.clip.load;
-    load(abort.signal)
-      .then((clip: LoadedClip) => {
-        if (abort.signal.aborted || clip.meta.eTag === loadedETag.current) return;
-        controllerRef.current?.replaceClip(slot, clip);
-        setClipState({ kind: "ready", meta: clip.meta });
-      })
-      .catch(() => undefined);
-    return () => abort.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalogRevision]);
+  return { rigPed, skeletonReady, skeletonError, clips: { primary, secondary } as Record<EmoteSlot, ClipState>, meshState, hasCloth };
+}
 
-  return { rigPed, skeletonReady, skeletonError, clipState, meshState, hasCloth };
+/**
+ * The movement clip set whose `idle` stands in for an empty primary slot (the game's neutral pose is the movement
+ * style's idle, not the bind pose): the female generic set for female peds, none for animals (their sets are
+ * per-creature and rarely have a plain idle).
+ */
+function idleClipSet(ped: string): string | null {
+  const name = ped.toLowerCase();
+  if (name.startsWith("a_c_")) return null;
+  return /(^|_)f_/.test(name) ? "move_f@generic" : "move_m@generic";
 }
 
 /** Canvas, overlay messages and the transport bar. three.js state lives in ViewerController, not in React. */
@@ -192,6 +219,7 @@ export function Viewer() {
   const status = useAppStore((s) => s.status);
   const settings = useAppStore((s) => s.settings);
   const entry = useAppStore(selectEntry);
+  const secondary = useAppStore(selectSecondary);
   const manualClip = useAppStore((s) => s.manualClip);
   const saveSettings = useAppStore((s) => s.saveSettings);
 
@@ -231,27 +259,47 @@ export function Viewer() {
   useEffect(() => controllerRef.current?.setTextures(showTextures), [showTextures]);
   useEffect(() => controllerRef.current?.setCloth(showCloth), [showCloth]);
 
-  // The main slot: the selected entry (or the manually picked clip of its dictionary), baked for the active ped.
-  const mainPlayable = entry !== null && (manualClip !== null || entry.previewable);
-  const mainSpec: SlotSpec | null = entry
-    ? {
-        ped: activePed,
-        clip: mainPlayable
-          ? manualClip
-            ? { key: `manual:${manualClip.dictionary}/${manualClip.clip}@${activePed}`, timing: { delay: 0, loop: entry.loop }, load: (signal) => api.dictionaryClip(manualClip.dictionary, manualClip.clip, activePed, signal) }
-            : { key: `emote:${entry.id}@${activePed}`, timing: { delay: entry.startDelayMs / 1000, loop: entry.loop }, load: (signal) => api.emoteClip(entry.id, activePed, signal) }
-          : null,
-        props: entry.props,
-      }
-    : null;
-  // The partner slot exists only for shared emotes with a resolved, previewable partner while the toggle is on. A
+  // The main ped's two animation slots follow the game: an emote whose flag says SECONDARY plays only its upper body,
+  // over the primary or, with none, over the movement style's idle (the clip's leg tracks are dropped, as in game);
+  // anything else is the primary, whole body. The lower list only offers secondaries and, while it is open, the upper
+  // list only primaries, so the two never compete for a slot. A manual clip is a whole-body experiment. Animal peds
+  // have no idle clip here, so their secondaries play whole-body instead. With nothing picked the rig just stands.
+  const entryPlayable = entry !== null && (manualClip !== null || entry.previewable);
+  const idleSet = idleClipSet(activePed);
+  const entryLayer: EmoteSlot = entry && entry.slot === "secondary" && manualClip === null && idleSet !== null ? "secondary" : "primary";
+  const layers: Record<EmoteSlot, EmoteRow | null> = { primary: null, secondary: null };
+  if (entry && entryPlayable) layers[entryLayer] = entry;
+  if (secondary && secondary.previewable && !layers.secondary) layers.secondary = secondary;
+
+  const clipOf = (e: EmoteRow, layer: EmoteSlot): ClipSpec => {
+    if (e === entry && manualClip) {
+      return { key: `manual:${manualClip.dictionary}/${manualClip.clip}@${activePed}`, timing: { delay: 0, loop: e.loop }, load: (signal) => api.dictionaryClip(manualClip.dictionary, manualClip.clip, activePed, signal) };
+    }
+    // The start delay belongs to the shared-emote pair of the selected entry; a layered secondary starts at once.
+    const delay = e === entry ? e.startDelayMs / 1000 : 0;
+    return { key: `emote:${e.id}@${activePed}#${layer}`, timing: { delay, loop: e.loop }, load: (signal) => api.emoteClip(e.id, activePed, signal) };
+  };
+  const idleSpec: ClipSpec | null =
+    !layers.primary && layers.secondary && gtaReady && idleSet ? { key: `idle:${idleSet}@${activePed}`, timing: { delay: 0, loop: true }, load: (signal) => api.clipSetClip(idleSet, "idle", activePed, signal) } : null;
+  const mainSpec: SlotSpec = {
+    ped: activePed,
+    clips: {
+      primary: layers.primary ? clipOf(layers.primary, "primary") : idleSpec,
+      secondary: layers.secondary ? clipOf(layers.secondary, "secondary") : null,
+    },
+    props: [...(layers.primary?.props ?? []), ...(layers.secondary?.props ?? [])],
+  };
+  // The partner rig exists only for shared emotes with a resolved, previewable partner while the toggle is on. A
   // manual clip is a solo experiment on the main ped, so the partner steps aside.
-  const partnerActive = showPartner && mainPlayable && manualClip === null && partner !== null && partner.previewable;
+  const partnerActive = showPartner && entryPlayable && manualClip === null && partner !== null && partner.previewable;
   const partnerSpec: SlotSpec | null =
     partnerActive && partner
       ? {
           ped: partnerPed,
-          clip: { key: `emote:${partner.id}@${partnerPed}`, timing: { delay: partner.startDelayMs / 1000, loop: partner.loop }, load: (signal) => api.emoteClip(partner.id, partnerPed, signal) },
+          clips: {
+            primary: { key: `emote:${partner.id}@${partnerPed}`, timing: { delay: partner.startDelayMs / 1000, loop: partner.loop }, load: (signal) => api.emoteClip(partner.id, partnerPed, signal) },
+            secondary: null,
+          },
           props: partner.props,
         }
       : null;
@@ -264,18 +312,26 @@ export function Viewer() {
   const placement = partnerActive ? (partner?.placement ?? null) : null;
   useEffect(() => controllerRef.current?.setPlacement(placement), [placement]);
 
-  // Playing state mirrors the timeline: a main clip autoplays, anything else stops it.
+  // Playing state mirrors the timeline: a loaded clip autoplays, anything else stops it.
   useEffect(() => {
-    setPlaying(main.clipState.kind === "ready" && (controllerRef.current?.timeline.playing ?? false));
-  }, [main.clipState]);
+    setPlaying(controllerRef.current?.timeline.playing ?? false);
+  }, [main.clips.primary, main.clips.secondary]);
 
+  // The overlay and the transport follow the selected entry, or the secondary while nothing is selected.
+  const focus = entry ?? secondary;
+  const focusLayer: EmoteSlot = entry ? entryLayer : "secondary";
   let view: ViewState;
-  if (!entry) view = { kind: "idle" };
-  else if (!mainPlayable) view = { kind: "notPreviewable", reason: entry.previewReason ?? "kind" };
+  if (!focus) view = { kind: "idle" };
+  else if (entry && !entryPlayable) view = { kind: "notPreviewable", reason: entry.previewReason ?? "kind" };
+  else if (!entry && secondary && !secondary.previewable) view = { kind: "notPreviewable", reason: secondary.previewReason ?? "kind" };
   else if (!main.skeletonReady) view = main.skeletonError ? { kind: "error", message: main.skeletonError } : { kind: "waitingGta" };
-  else if (main.clipState.kind === "ready") view = { kind: "ready", meta: main.clipState.meta };
-  else if (main.clipState.kind === "error") view = { kind: "error", message: main.clipState.message };
-  else view = { kind: "loading" };
+  else {
+    const state = main.clips[focusLayer];
+    if (state.kind === "ready") view = { kind: "ready", meta: state.meta, layer: focusLayer };
+    else if (state.kind === "error") view = { kind: "error", message: state.message };
+    else view = { kind: "loading" };
+  }
+  const primaryMeta = main.clips.primary.kind === "ready" ? main.clips.primary.meta : null;
 
   // Space toggles playback unless a form control has the focus.
   useEffect(() => {
@@ -337,6 +393,7 @@ export function Viewer() {
   };
 
   const hasPartner = partner !== null;
+  const anyProps = mainSpec.props.length > 0 || (partner?.props.length ?? 0) > 0;
   return (
     <section className="viewer">
       <div className="viewer-stage">
@@ -368,16 +425,10 @@ export function Viewer() {
           <button type="button" className={showHelpers ? "on" : ""} aria-pressed={showHelpers} onClick={() => setPref({ showHelperBones: !showHelpers })} title="MH_ / PH_ / IK_ / RB_">
             {t("viewer.helperBones")}
           </button>
-          <button
-            type="button"
-            className={rootMotion ? "on" : ""}
-            aria-pressed={rootMotion}
-            disabled={view.kind === "ready" && !view.meta.hasRootMotion}
-            onClick={() => setPref({ rootMotion: !rootMotion })}
-          >
+          <button type="button" className={rootMotion ? "on" : ""} aria-pressed={rootMotion} disabled={primaryMeta !== null && !primaryMeta.hasRootMotion} onClick={() => setPref({ rootMotion: !rootMotion })}>
             {t("viewer.rootMotion")}
           </button>
-          <button type="button" className={showProps ? "on" : ""} aria-pressed={showProps} disabled={!entry || (entry.props.length === 0 && (partner?.props.length ?? 0) === 0)} onClick={() => setPref({ showProps: !showProps })}>
+          <button type="button" className={showProps ? "on" : ""} aria-pressed={showProps} disabled={!anyProps} onClick={() => setPref({ showProps: !showProps })}>
             {t("viewer.props")}
           </button>
           <button type="button" className={showMesh ? "on" : ""} aria-pressed={showMesh} disabled={!gtaReady} title={main.meshState === "error" || second.meshState === "error" ? t("viewer.mesh.failed") : undefined} onClick={() => setPref({ showMesh: !showMesh })}>
@@ -409,7 +460,7 @@ export function Viewer() {
           </button>
           <button type="button" className={showPartner ? "on" : ""} aria-pressed={showPartner} disabled={!hasPartner} title={t("viewer.partner.title")} onClick={() => setPref({ showPartner: !showPartner })}>
             {t("viewer.partner")}
-            {partnerActive && second.clipState.kind === "loading" && <span className="spinner" aria-hidden="true" />}
+            {partnerActive && second.clips.primary.kind === "loading" && <span className="spinner" aria-hidden="true" />}
           </button>
           <span className="viewer-hud-group" role="group" aria-label={t("viewer.camera")}>
             <button type="button" onClick={() => camera("front")}>{t("viewer.camera.front")}</button>
@@ -426,7 +477,7 @@ export function Viewer() {
         </div>
         <ViewerOverlay view={view} />
       </div>
-      <Transport controllerRef={controllerRef} playing={playing} onToggle={toggle} enabled={view.kind === "ready"} meta={view.kind === "ready" ? view.meta : null} />
+      <Transport controllerRef={controllerRef} playing={playing} onToggle={toggle} enabled={view.kind === "ready"} meta={view.kind === "ready" ? view.meta : null} layer={view.kind === "ready" ? view.layer : "primary"} />
     </section>
   );
 }
@@ -481,14 +532,16 @@ interface TransportProps {
   playing: boolean;
   enabled: boolean;
   meta: ClipMetaDto | null;
+  /** The layer of the main ped whose clip the frame counter shows. */
+  layer: EmoteSlot;
   onToggle: () => void;
 }
 
 /**
  * Play / scrub / speed / loop over the shared timeline (as long as the longest clip incl. its start delay); the frame
- * counter shows the main clip. Re-renders only itself ~30× per second while a clip plays.
+ * counter shows the selected entry's clip. Re-renders only itself ~30× per second while a clip plays.
  */
-function Transport({ controllerRef, playing, enabled, meta, onToggle }: TransportProps) {
+function Transport({ controllerRef, playing, enabled, meta, layer, onToggle }: TransportProps) {
   const t = useT();
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -520,8 +573,8 @@ function Transport({ controllerRef, playing, enabled, meta, onToggle }: Transpor
     setTime(value);
   };
 
-  const mainTime = controllerRef.current?.mainTime ?? 0;
-  const frameIndex = Math.min(meta ? meta.frames - 1 : 0, Math.round(mainTime * fps));
+  const clipTime = controllerRef.current?.layerTime("main", layer) ?? 0;
+  const frameIndex = Math.min(meta ? meta.frames - 1 : 0, Math.round(clipTime * fps));
   return (
     <div className="transport">
       <button type="button" className="play" onClick={onToggle} disabled={!enabled} aria-label={playing ? t("viewer.pause") : t("viewer.play")}>

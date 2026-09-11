@@ -48,6 +48,19 @@ export const ja = {
   "catalog.empty": "一致するエモートがありません",
   "catalog.tag.custom": "同梱",
   "catalog.tag.props": "小道具",
+  "catalog.layer": "合成",
+  "catalog.layer.title": "下段を開く。上段は全身のエモート（プライマリ）だけ、下段は上半身を重ねるエモート（セカンダリ、S）だけになり、ゲームで同時に流せる組み合わせだけが選べる。閉じるとセカンダリは解除",
+  "catalog.secondary.title": "セカンダリ（上半身を重ねる）",
+  "catalog.secondary.title.hint": "flag でセカンダリになるエモート。ここで選んだものの上半身を上段のエモートに重ねる（ゲームの 2 スロット再生と同じ規則）。上段が空なら歩き方の idle に重ねる。動物エモートは上段と同じ動物のものだけ出る",
+  "catalog.secondary.placeholder": "重ねるエモートを検索",
+  "catalog.secondary.clear": "解除",
+  "catalog.secondary.empty": "一致するエモートがありません",
+
+  "slot.primary": "プライマリ",
+  "slot.secondary": "セカンダリ",
+  "slot.primary.short": "P",
+  "slot.secondary.short": "S",
+  "slot.secondary.title": "flag がセカンダリ（上半身だけ、歩きながら可）。単独では歩き方の idle の脚の上に上半身だけが再生される。全身を見るには「辞書内のクリップを選ぶ」",
 
   "kind.animation": "アニメーション",
   "kind.scenario": "シナリオ",
@@ -73,6 +86,10 @@ export const ja = {
   "detail.flags": "フラグ",
   "detail.loop": "ループ",
   "detail.move": "移動可",
+  "detail.upperBody": "上半身",
+  "detail.flagValue": "flag {flag}",
+  "detail.clear": "解除",
+  "detail.clear.title": "選択を解除する（Esc）",
   "detail.exitEmote": "退出エモート",
   "detail.props": "小道具",
   "detail.propBone": "ボーン {bone}",
@@ -243,6 +260,7 @@ export const ja = {
   "error.TEXTURE_NOT_FOUND": "テクスチャが見つかりません",
   "error.INVALID_TEXTURE": "テクスチャの指定が不正です",
   "error.NETWORK": "サーバーに接続できません",
+  "error.CLIPSET_NOT_FOUND": "クリップセットにそのクリップがありません",
 } as const;
 
 export type MessageKey = keyof typeof ja;

@@ -15,7 +15,8 @@ namespace EmotePreviewer.Core.Anim;
 /// </summary>
 public sealed class BakedClip
 {
-    public const int LayoutVersion = 3;
+    /// <summary>Part of the baked-clip cache key and ETag; bumped when the layout or the sampling changes (4: list clips play their elements' time windows).</summary>
+    public const int LayoutVersion = 4;
     public const int FloatsPerBone = 7;
 
     public required int Fps { get; init; }

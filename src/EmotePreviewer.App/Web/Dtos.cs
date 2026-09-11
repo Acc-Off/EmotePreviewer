@@ -121,6 +121,12 @@ public sealed record EmoteDto(
     string? Name,
     bool Loop,
     bool Move,
+    /// <summary>The animation flag the menu passes to the game (LOOP = 1, STUCK = 50, MOVING = 51 …; 0 when none).</summary>
+    int Flag,
+    /// <summary><c>primary</c> (full body; flags without the SECONDARY bit) or <c>secondary</c> (plays over a primary emote; upper body only when <see cref="UpperBody"/>).</summary>
+    string Slot,
+    /// <summary>UPPERBODY bit of the flag: as a secondary, only the spine, arms and head come from this clip.</summary>
+    bool UpperBody,
     int? DurationMs,
     string? ExitEmote,
     IReadOnlyList<PropDto> Props,
@@ -137,6 +143,8 @@ public sealed record EmoteDto(
     /// <summary>The resolved partner entry; null for solo emotes and for partner commands that are not in the catalog.</summary>
     PartnerDto? Partner)
 {
+    public static string SlotName(EmoteEntry e) => e.Move ? "secondary" : "primary";
+
     public static string KindName(EmoteKind kind) => kind switch
     {
         EmoteKind.Animation => "animation",

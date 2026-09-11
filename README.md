@@ -7,30 +7,33 @@ English | [日本語](README.ja.md)
 EmotePreviewer reads the emote definitions of [rpemotes-reborn](https://github.com/alberttheprince/rpemotes-reborn) and [scully_emotemenu](https://github.com/Scullyy/scully_emotemenu), looks up each animation in your GTA V installation and plays it in a 3D viewer in your browser. No server to join, no loading screens: pick an emote from a list of six thousand and see it a second later, with its prop, on the ped of your choice, together with the other person when it is a shared emote. A single Windows executable, nothing to install.
 
 <p align="center">
-  <img src="Docs/images/shared-hug.png" alt="A shared emote (hug) on two peds" width="800">
+  <img src="Docs/images/layer-walk-flag-en.png" alt="A flag-waving upper-body emote layered over the Casual walk style" width="800">
 </p>
 
 ## Features
 
-- **Every emote of your resources in one list.** Instant search over command, label, dictionary and clip name; filters by resource, category, kind, "with props" and "previewable". Both resources can be loaded side by side.
-- **Real playback.** Animations are decoded from the game's own `.ycd` files, not approximated. Play, pause, scrub, loop, change the speed; switch root motion on to see the ped move through space or off to keep it in place.
-- **Peds and textures.** Any of the 1,100 peds in the game (freemode characters, civilians, professions, story characters, animals) with their diffuse textures, or a stick figure when you only want the motion. Human peds share a skeleton, so every emote fits every human ped.
-- **Props.** Umbrellas, guitars, phones, cups, signs and the rest appear on the bone the resource defines, textured, including physics props and models shipped inside the resource.
-- **Shared emotes on two peds.** Hugs, handshakes, piggybacks, CPR, carrying a dog: the partner's emote is looked up and both peds play at the placement the resource defines, facing each other or hanging from the other's bone. Choose the partner ped in the settings.
-- **Animal emotes** switch to the right animal (rottweiler, pug, cat, coyote, …) automatically.
-- **Walk styles** are resolved through the game's clip set table and play their walk cycle. Scenarios and facial expressions are listed with a reason why they cannot be previewed.
-- **Pick any clip of a dictionary.** When you want to see the other clips next to an emote's, choose one from the dictionary without leaving the viewer.
-- **Resources from GitHub.** Fetch and update rpemotes-reborn / scully_emotemenu from the settings page, or add a local folder.
-- **Made for editing a resource.** Folder resources are watched: a `.ycd` or Lua file you add or overwrite is picked up a moment later, and the clip on screen is swapped in place without losing the playhead. A **Rescan** button does the same on demand.
-- **Japanese and English UI, light and dark theme.** The UI runs in your normal browser (Edge, Chrome, …) and talks only to `127.0.0.1`.
-- **Read-only.** Game data is read from your installation and never written, exported or redistributed.
+| | |
+|---|---|
+| **List and search** | Every emote of your resources in one list.<br>Instant search over command, label, dictionary and clip name.<br>Filters by resource, category, kind, "with props" and "previewable" |
+| **Real playback** | Animations are decoded from the game's own `.ycd` files, not approximated.<br>Play, pause, scrub, loop, change the speed, toggle root motion |
+| **Peds and textures** | Any of the 1,100 peds in the game (freemode characters, civilians, professions, story characters, animals) with their diffuse textures.<br>A stick figure when you only want the motion |
+| **Props** | Umbrellas, guitars, phones, cups, signs and the rest appear on the bone the resource defines, textured.<br>Physics props and models shipped inside the resource included |
+| **Shared emotes** | Hugs, handshakes, piggybacks, CPR, carrying a dog.<br>The partner's emote is looked up and both peds play at the placement the resource defines, facing each other or hanging from the other's bone.<br>Choose the partner ped in the settings |
+| **Layering** | The game has whole-body emotes and upper-body emotes (waving or holding a flag while walking), and an upper-body emote plays on top of a whole-body one.<br>The viewer follows the same rule: pick a whole-body emote, open **Layer** and pick an upper-body one to see the two combined |
+| **Animal emotes** | Switch to the right animal (rottweiler, pug, cat, coyote, …) automatically |
+| **Walk styles** | Resolved through the game's clip set table and played as their walk cycle.<br>Scenarios and facial expressions are listed with a reason why they cannot be previewed |
+| **Any clip of a dictionary** | See the other clips next to an emote's by choosing one from the dictionary, without leaving the viewer |
+| **Resources from GitHub** | Fetch and update rpemotes-reborn / scully_emotemenu from the settings page.<br>Or add a local folder |
+| **Made for editing a resource** | Folder resources are watched: a `.ycd` or Lua file you add or overwrite is picked up a moment later.<br>The clip on screen is swapped in place without losing the playhead.<br>A **Rescan** button does the same on demand |
 
 <p align="center">
-  <img src="Docs/images/prop-guitar.png" alt="A prop emote (guitar) with textures" width="800">
+  <img src="Docs/images/solo-dance.gif" alt="A dance emote (dance2) playing" width="49%">
+  <img src="Docs/images/layer-walk-flag.gif" alt="A flag emote layered over a walk style" width="49%">
 </p>
 
 <p align="center">
-  <img src="Docs/images/animal-carry-dog.png" alt="Carrying a small dog: a human-animal shared emote" width="800">
+  <img src="Docs/images/shared-hug.gif" alt="A shared emote (hug) on two peds" width="49%">
+  <img src="Docs/images/prop-guitar.gif" alt="A prop emote (guitar) with textures" width="49%">
 </p>
 
 ## Requirements
@@ -60,12 +63,14 @@ Quit with Ctrl+C in the console window or **Quit EmotePreviewer** on the setting
 | **Cloth** | Parts the game moves with its cloth simulation (the protagonists' jackets). Drawn attached to the body here, without the swing; enabled only for peds that have such parts |
 | **Animal ped** | Play animal emotes on their animal instead of the configured ped |
 | **Partner** | Show the other ped of a shared emote |
+| **Layer** (next to the search box) | Opens the lower list. The upper list then shows only whole-body emotes (primaries) and the lower one only upper-body emotes (secondaries); the upper body of the one picked below plays on top of the one picked above, so only pairs the game can play together are selectable. The lower list has its own search box and source / category / kind filters (animal emotes appear only under an emote of the same animal); drag the divider to resize. Closing it drops the secondary |
+| **Esc** / **✕ Clear** in the details / clicking the selected row again | Clears the selection; a secondary left on its own plays over the walk style's idle |
 | **Helper bones** | Include the helper bones (mover, prop, IK, roll and eye-target bones) in the stick figure |
 | **Root motion** | Apply the clip's root motion so the ped moves; off keeps it at the origin |
 | **Front / Side / Top / Reset** | Camera presets; drag to orbit, wheel to zoom |
 | Timeline | Scrub, loop, speed 0.25× to 2×, frame counter |
 
-The details panel under the timeline shows the resource's definition: command, dictionary and clip, duration, flags, props with their bones, and for shared emotes the partner and how the two peds are placed. **Pick a clip from the dictionary** lists every clip of the emote's dictionary.
+The details panel under the timeline shows the resource's definition: command, dictionary and clip, duration, flags (loop, move, upper body and the flag value), props with their bones, for shared emotes the partner and how the two peds are placed, and the layered secondary. **Pick a clip from the dictionary** lists every clip of the emote's dictionary (a clip picked by hand always plays whole-body, which is also how to see the leg motion of an upper-body emote).
 
 Ped and partner ped are chosen on the settings page (searchable, grouped by category). Changing the ped rebuilds the viewer without re-indexing the game.
 

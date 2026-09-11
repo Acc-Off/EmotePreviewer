@@ -93,6 +93,54 @@ public sealed class CatalogBuilderTests : IDisposable
     }
 
     [Fact]
+    public void AnimationFlagsFollowTheMenus()
+    {
+        var rp = WriteRpEmotes("rp", """
+            RP = {}
+            RP.Emotes = {
+                ["once"] = { "d", "c", "Once" },
+                ["loop"] = { "d", "c", "Loop", AnimationOptions = { onFootFlag = AnimFlag.LOOP } },
+                ["moving"] = { "d", "c", "Moving", AnimationOptions = { onFootFlag = AnimFlag.MOVING } },
+                ["stuck"] = { "d", "c", "Stuck", AnimationOptions = { onFootFlag = AnimFlag.STUCK } },
+                ["explicit"] = { "d", "c", "Explicit", AnimationOptions = { onFootFlag = AnimFlag.LOOP, Flag = 35 } },
+                ["legacymove"] = { "d", "c", "Legacy", AnimationOptions = { EmoteMoving = true, EmoteLoop = true } },
+                ["legacyloop"] = { "d", "c", "Legacy", AnimationOptions = { EmoteLoop = true } },
+                ["legacystuck"] = { "d", "c", "Legacy", AnimationOptions = { EmoteStuck = true } },
+            }
+            """);
+        var sc = WriteScully("sc", """
+            return { type = 'general_emotes', options = {
+                { Label = 'Once', Command = 'once', Dictionary = 'd', Animation = 'c' },
+                { Label = 'Loop', Command = 'loop', Dictionary = 'd', Animation = 'c', Options = { Flags = { Loop = true } } },
+                { Label = 'Move', Command = 'move', Dictionary = 'd', Animation = 'c', Options = { Flags = { Move = true, Loop = true } } },
+                { Label = 'Stuck', Command = 'stuck', Dictionary = 'd', Animation = 'c', Options = { Flags = { Stuck = true, Move = true } } },
+            } }
+            """);
+        var catalog = CatalogBuilder.Build(new[] { new ResourceSource("rp", rp), new ResourceSource("sc", sc) });
+        Assert.Empty(catalog.Warnings);
+
+        (int flag, bool loop, bool secondary, bool upper) Of(string id)
+        {
+            var e = catalog.FindById(id)!;
+            return (e.AnimFlag, e.Loop, e.Move, e.UpperBody);
+        }
+        // rpemotes: Flag overrides onFootFlag; the legacy booleans convert like EmoteMenu.lua (Moving before Loop before Stuck).
+        Assert.Equal((0, false, false, false), Of("rp/Emotes/once"));
+        Assert.Equal((1, true, false, false), Of("rp/Emotes/loop"));
+        Assert.Equal((51, true, true, true), Of("rp/Emotes/moving"));
+        Assert.Equal((50, false, true, true), Of("rp/Emotes/stuck"));
+        Assert.Equal((35, true, true, false), Of("rp/Emotes/explicit"));
+        Assert.Equal((51, true, true, true), Of("rp/Emotes/legacymove"));
+        Assert.Equal((1, true, false, false), Of("rp/Emotes/legacyloop"));
+        Assert.Equal((50, false, true, true), Of("rp/Emotes/legacystuck"));
+        // scully: Stuck and 50 or Move and 51 or Loop and 1 or 0.
+        Assert.Equal((0, false, false, false), Of("sc/general_emotes/once"));
+        Assert.Equal((1, true, false, false), Of("sc/general_emotes/loop"));
+        Assert.Equal((51, true, true, true), Of("sc/general_emotes/move"));
+        Assert.Equal((50, false, true, true), Of("sc/general_emotes/stuck"));
+    }
+
+    [Fact]
     public void MakeIdProducesUrlSafeNames()
     {
         Assert.Equal("rpemotes-reborn", ResourceSource.MakeId("RPEmotes-Reborn"));

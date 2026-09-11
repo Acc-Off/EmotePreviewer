@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../shared/api";
 import { errorText, useT } from "../shared/i18n";
-import { selectEntry, useAppStore } from "../shared/store";
+import { selectEntry, selectSecondary, useAppStore, type EmoteRow } from "../shared/store";
 import type { ClipInfoDto, PartnerPlacementDto } from "../shared/types";
 
-/** Facts about the selected entry, why it cannot be previewed, and the manual clip picker. */
+/** Facts about the selected entry, why it cannot be previewed, the manual clip picker, and the secondary layered over it. */
 export function DetailPanel() {
   const t = useT();
   const entry = useAppStore(selectEntry);
+  const secondary = useAppStore(selectSecondary);
   const manualClip = useAppStore((s) => s.manualClip);
   const setManualClip = useAppStore((s) => s.setManualClip);
   const select = useAppStore((s) => s.select);
+  const setSecondary = useAppStore((s) => s.setSecondary);
   const [clips, setClips] = useState<ClipInfoDto[] | null>(null);
   const [clipsError, setClipsError] = useState<string | null>(null);
   const [listOpen, setListOpen] = useState(false);
@@ -37,7 +39,13 @@ export function DetailPanel() {
     return () => abort.abort();
   }, [listOpen, dictionary, clips]);
 
-  if (!entry) return <section className="detail empty">{t("detail.empty")}</section>;
+  if (!entry) {
+    return (
+      <section className={`detail${secondary ? "" : " empty"}`}>
+        {secondary ? <SecondaryBlock secondary={secondary} onClear={() => setSecondary(null)} /> : t("detail.empty")}
+      </section>
+    );
+  }
 
   const rows: [string, React.ReactNode][] = [
     [t("detail.command"), <span className="mono">{entry.command}</span>],
@@ -52,7 +60,8 @@ export function DetailPanel() {
     rows.push([t("detail.name"), <span className="mono">{entry.name}</span>]);
   }
   if (entry.durationMs != null) rows.push([t("detail.duration"), t("common.seconds", { seconds: (entry.durationMs / 1000).toFixed(1) })]);
-  const flags = [entry.loop && t("detail.loop"), entry.move && t("detail.move"), entry.custom && t("detail.custom")].filter(Boolean);
+  const flags = [entry.loop && t("detail.loop"), entry.move && t("detail.move"), entry.upperBody && t("detail.upperBody"), entry.custom && t("detail.custom")].filter(Boolean);
+  if (entry.kind === "animation") flags.push(t("detail.flagValue", { flag: entry.flag }));
   if (flags.length) rows.push([t("detail.flags"), flags.join(" · ")]);
   if (entry.exitEmote) rows.push([t("detail.exitEmote"), <span className="mono">{entry.exitEmote}</span>]);
   if (entry.props.length) {
@@ -93,6 +102,9 @@ export function DetailPanel() {
 
   return (
     <section className="detail">
+      <button type="button" className="link detail-clear" title={t("detail.clear.title")} onClick={() => select(null)}>
+        ✕ {t("detail.clear")}
+      </button>
       <dl>
         {rows.map(([k, v], i) => (
           <div key={i} className="detail-row">
@@ -101,6 +113,7 @@ export function DetailPanel() {
           </div>
         ))}
       </dl>
+      {secondary && <SecondaryBlock secondary={secondary} onClear={() => setSecondary(null)} />}
       {dictionary && (
         <div className="clip-picker">
           {!listOpen ? (
@@ -133,6 +146,31 @@ export function DetailPanel() {
         </div>
       )}
     </section>
+  );
+}
+
+/** The secondary layered over the selection: what it is and how to drop it. */
+function SecondaryBlock({ secondary, onClear }: { secondary: EmoteRow; onClear: () => void }) {
+  const t = useT();
+  return (
+    <div className="detail-secondary">
+      <div className="detail-secondary-head">
+        <span className="tag slot secondary">{t("slot.secondary")}</span>
+        <span className="mono" title={secondary.id}>
+          {secondary.command}
+        </span>
+        <span className="muted">— {secondary.label}</span>
+        <button type="button" className="link" onClick={onClear}>
+          ✕ {t("catalog.secondary.clear")}
+        </button>
+      </div>
+      <div className="mono muted">
+        {secondary.dictionary} / {secondary.clip}
+        {secondary.durationMs != null ? ` · ${t("common.seconds", { seconds: (secondary.durationMs / 1000).toFixed(1) })}` : ""}
+        {secondary.loop ? ` · ${t("detail.loop")}` : ""}
+        {` · ${t("detail.flagValue", { flag: secondary.flag })}`}
+      </div>
+    </div>
   );
 }
 

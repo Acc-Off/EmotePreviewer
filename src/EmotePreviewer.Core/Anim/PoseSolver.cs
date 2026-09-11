@@ -40,8 +40,11 @@ public sealed class PoseSolver
     }
 
     /// <summary>
-    /// The freemode skeletons carry "roll" helper bones (RB_L_ThighRoll, RB_R_ThighRoll) that are not animated
-    /// by most clips; copying the corresponding thigh rotation keeps them from sticking out. Purely cosmetic.
+    /// The freemode skeletons carry "roll" helper bones (RB_L_ThighRoll, RB_R_ThighRoll; children of the pelvis at the
+    /// thigh's position) that the game poses from the thigh after the animation, whatever the clip says: a clip that
+    /// carries a track for them (synthetic clips written for every bone do) still shows a straight, undistorted leg in
+    /// game. The thigh mesh is partly skinned to them, so leaving them at the bind pose while the thigh swings bends the
+    /// leg visibly. Copying the thigh rotation unconditionally reproduces the game.
     /// </summary>
     public bool FixThighRollBones { get; set; } = true;
 
@@ -95,7 +98,7 @@ public sealed class PoseSolver
             foreach (var (roll, source) in ThighRollPairs)
             {
                 int ri = Skeleton.IndexOfTag(roll), si = Skeleton.IndexOfTag(source);
-                if (ri >= 0 && si >= 0 && !sample.Rotations.ContainsKey(roll)) LocalRotation[ri] = LocalRotation[si];
+                if (ri >= 0 && si >= 0) LocalRotation[ri] = LocalRotation[si];
             }
         }
 

@@ -24,6 +24,39 @@ public sealed class ClipBakerGameDataTests
         catch (GtaKeys.KeyMaterialMissingException ex) { throw new SkipException(ex.Message); }
     }
 
+    /// <summary>
+    /// A ClipAnimations (list) clip plays each element inside its own [StartTime, EndTime) window of a long scene
+    /// animation. wave_a of friends@frj@ig_1 is two such windows (53.2–56.7 s of a 67.9 s animation and 37.6–41.1 s of a
+    /// 111.7 s one); handing the elements the raw clip time played the start of those animations, where nobody waves.
+    /// </summary>
+    [SkippableFact]
+    public void ListClipElementsPlayInsideTheirTimeWindows()
+    {
+        using var gd = OpenOrSkip();
+        var skel = gd.LoadSkeleton("mp_m_freemode_01")!;
+        var dict = gd.LoadClipDictionary("friends@frj@ig_1");
+        Skip.If(dict == null, "friends@frj@ig_1 not in this game version");
+        var clip = dict!.FindClip("wave_a");
+        Skip.If(clip == null, "wave_a not in friends@frj@ig_1");
+        Assert.InRange(clip!.Duration, 3.4f, 3.5f);
+
+        var solver = new PoseSolver(skel);
+        var sample = new ClipSample();
+        int hand = skel.Bones.First(b => b.Name == "SKEL_L_Hand").Index;
+        int head = skel.Bones.First(b => b.Name == "SKEL_Head").Index;
+        float highest = float.MinValue;
+        for (double t = 0; t < clip.Duration; t += 0.1)
+        {
+            clip.Sample(t, sample);
+            solver.Apply(sample);
+            highest = Math.Max(highest, solver.WorldPosition(hand).Z - solver.WorldPosition(head).Z);
+        }
+        _out.WriteLine($"wave_a: left hand rises to {highest:F2} m above the head");
+        // Waving (left-handed in this scene): the hand goes well above the head from about 2.0 s to 3.1 s of the clip;
+        // the start of the scene animation keeps both hands below the hips.
+        Assert.True(highest > 0.3f, $"the left hand never rose above the head (max {highest:F2} m)");
+    }
+
     [SkippableTheory]
     [InlineData("anim@mp_player_intcelebrationfemale@air_guitar", "air_guitar")]
     [InlineData("anim@amb@nightclub@dancers@podium_dancers@", "hi_dance_facedj_17_v2_male^5")]

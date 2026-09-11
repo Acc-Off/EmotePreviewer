@@ -282,7 +282,8 @@ Alpha0  = 1 − Alpha1
 ### 5.4 クリップ時刻 → アニメーション時刻
 
 - **ClipAnimation**（Type 1）: `scaled = t × Rate`、`dur = EndTime − StartTime`、`animTime = StartTime + (scaled mod dur)`。再生長は `dur / Rate` 秒。
-- **ClipAnimations**（Type 2）: 各要素の StartTime / Rate は使わず、`animTime = t mod Duration`（クリップ全体の Duration）を **全要素に同じ値で** 与える。要素は順に評価し、同じトラックがあれば後の要素が上書きする。ルートモーション（トラック 5/6）は要素間で加算／合成する。
+- **ClipAnimations**（Type 2）: まず `tc = t mod Duration`（クリップ全体の Duration。0 なら最長要素の `(EndTime − StartTime) / Rate`）を取り、**各要素ごとに** Type 1 と同じ式 `animTime = StartTime + ((tc × Rate) mod (EndTime − StartTime))` で自分のアニメーションの時刻に写す。要素は順に評価し、同じトラックがあれば後の要素が上書きする。ルートモーション（トラック 5/6）は要素間で加算／合成する。
+  - 2026-09-11 訂正: 以前は「各要素の StartTime / Rate は使わず全要素に `tc` をそのまま与える」としていたが誤り。Type 2 の要素は長いシーン用アニメーションの一部区間（例: `friends@frj@ig_1` の `wave_a` は 67.9 秒のアニメーションの 53.2〜56.7 秒と 111.7 秒のアニメーションの 37.6〜41.1 秒）を指すことが多く、先頭から再生すると別の動きになる（手を振るはずが腕が上がらない）。
 
 ### 5.5 ルートモーションと補助ボーン
 

@@ -148,6 +148,21 @@ public sealed class ClipService
         return Bake(dict, clipName, custom, identity, ped);
     }
 
+    /// <summary>
+    /// Bakes a clip of a movement clip set (<c>move_m@generic</c> / <c>idle</c>) resolved through the game's clip set
+    /// table, own dictionary first and then the fallback sets. The viewer plays the generic idle this way while no
+    /// primary emote is selected, so a secondary emote has a lower body to sit on.
+    /// </summary>
+    public BakedClipResult BakeClipSetClip(string clipSet, string clipName, string ped)
+    {
+        var s = _state.Snapshot;
+        if (s.State != GtaState.Ready || s.GameData == null)
+            throw new ClipServiceException("GTA_NOT_READY", "The game data has not been indexed yet", 503);
+        var resolved = s.GameData.ResolveClipSetClip(clipSet, clipName)
+            ?? throw new ClipServiceException("CLIPSET_NOT_FOUND", $"Clip set {clipSet} has no clip '{clipName}' (nor its fallback sets)");
+        return BakeClip(resolved.Dictionary, resolved.Clip, ped);
+    }
+
     BakedClipResult Bake(IClipDictionary dict, string clipName, bool custom, string identity, string ped)
     {
         lock (_loadLock) return BakeLocked(dict, clipName, custom, identity, ped);

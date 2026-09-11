@@ -7,9 +7,9 @@ Browse, search and preview FiveM emotes (rpemotes-reborn / scully_emotemenu) on 
 
 Before the first start, create the key files once with the [EmotePreviewer Key Tool](https://github.com/Acc-Off/EmotePreviewerKeyTool/releases). Requirements and usage are in the README. No game data, keys or emote resources are included.
 
-### Changes in 0.2.2
+### Changes in 0.3.0
 
-- Fixed: the cloth-simulated parts of the story and cutscene peds (the protagonists' jackets and 50 other drawables) were drawn pushed away from the body. Their vertices are stored as barycentric weights over the cloth simulation mesh, not as bone weights; they are now decoded through the `.yld` binding and skinned to the body, so the jacket rests and moves with the ped (without the in-game swing). The **Cloth** toggle is on by default now.
-- Fixed: the story characters' faces (`FACIAL_*` rig, e.g. `player_zero`) folded into the skull on clips that carry a `FACIAL_facialRoot` track. Those bones are treated as facial and left to the facial layer, like `FB_*`.
-- Ped mesh ETags now hash the served bytes, so a changed extractor never leaves the browser on a stale cached mesh.
-- DevTools: `yld` (cloth dictionary dump), `cloth` reports decode problems.
+- Layering: emotes now play in the game's two animation slots. An emote whose flag makes it an upper-body one (SECONDARY, e.g. flag 51: waving, clapping, holding a flag) plays only its upper body, over the walk style's idle or over the whole-body emote picked above it. **Layer** (next to the search box) opens a second list of upper-body emotes; the upper list then shows whole-body ones, so only pairs the game can play together can be picked. The rules were verified against the game.
+- Fixed: list-type clips (about 4,900 of the previewable clips; 3,400 of them point at a later section of a long animation, e.g. `wave_a`) played from the start of their source animation instead of their time window. The baked clip cache is version 4 now, so old caches are rebuilt on first use.
+- Fixed: the thigh roll helper bones stayed at the bind pose when a clip carried a track for them (clips written by converters), which bent a raised leg.
+- Emotes flagged MOVING (51) count as looping. `GET /api/clipsets/{set}/{clip}` bakes a clip of a movement clip set. DevTools: `ycd` (export a dictionary), `clipinfo [--dump]` (clip structure and raw track values).

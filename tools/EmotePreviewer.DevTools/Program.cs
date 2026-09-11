@@ -16,6 +16,8 @@ using EmotePreviewer.Fixtures;
 //   devtools yft <yft name> [out.yft]                             extract a skeleton fragment from GTA archives
 //   devtools bake [limit]                                         bake every previewable entry with ClipBaker and count failures
 //   devtools pose <dictionary> <clip> [t]                         world-space bone positions at time t (compare with the viewer)
+//   devtools ycd <dictionary> [out.ycd]                           extract a clip dictionary from GTA archives
+//   devtools clipinfo <dictionary> <clip> [--dump out.json]       clip timing, animation headers, channel types per track; --dump writes every frame's raw track values
 //   devtools axes <dictionary> <clip> <bone> [bone...]            rotation-axis statistics of a bone's local rotation (relative to bind) over a clip
 //   devtools mesh <model> [more models...]                        extract prop / ped drawables and print their statistics
 //   devtools props [limit] [--textures]                           check how many prop models referenced by the catalog resolve (and their diffuse textures)
@@ -805,6 +807,70 @@ switch (cmd)
         }
         break;
     }
+    case "ycd":
+    {
+        if (rest.Count < 2) return Usage();
+        using var gd = OpenGta();
+        var outPath = rest.ElementAtOrDefault(2) ?? (rest[1] + ".ycd");
+        if (!gd.ExportClipDictionary(rest[1], outPath)) throw new FileNotFoundException(rest[1] + ".ycd not found");
+        Console.WriteLine($"wrote {outPath} from {gd.FindClipDictionaryPath(rest[1])}");
+        break;
+    }
+    case "clipinfo":
+    {
+        if (rest.Count < 3) return Usage();
+        var dump = Opt("--dump");
+        var cat = BuildCatalog();
+        using var gd = OpenGta();
+        var dict = (cat.CustomYcds.TryGetValue(rest[1], out var loose) ? gd.LoadLooseClipDictionary(loose) : gd.LoadClipDictionary(rest[1])) ?? throw new FileNotFoundException("dictionary not found: " + rest[1]);
+        var clip = dict.FindClip(rest[2]) as GtClip ?? throw new KeyNotFoundException("clip not found: " + rest[2]);
+        Console.WriteLine($"{dict.Name} / {clip.Name}: duration={clip.Duration:F4}s native={clip.NativeFrameRate:F2}fps {clip.TimingInfo}");
+        var animations = new List<object>();
+        int ai = 0;
+        foreach (var raw in clip.RawAnimations())
+        {
+            var a = GtResourceHelpers.Decode(raw);
+            Console.WriteLine($"  animation {ai}: frames={a.Frames} seqLimit={a.SequenceFrameLimit} duration={a.Duration:F4}s tracks={a.Tracks.Count} sequences={a.Sequences.Count}");
+            var counts = new Dictionary<string, int>();
+            for (int s = 0; s < a.Sequences.Count; s++)
+                for (int t = 0; t < a.Tracks.Count; t++)
+                {
+                    var key = $"format {a.Tracks[t].Format} track {a.Tracks[t].TrackId}: [{string.Join(",", a.Sequences[s].GetChannelTypes(t).Select(c => (int)c))}]";
+                    counts[key] = counts.TryGetValue(key, out var n) ? n + 1 : 1;
+                }
+            foreach (var kv in counts.OrderByDescending(k => k.Value)) Console.WriteLine($"    {kv.Value,5} × {kv.Key}");
+            if (dump != null)
+            {
+                var ev = new EmotePreviewer.Core.Rage.Anim.AnimationEvaluator(a);
+                var frames = new List<float[][]>();
+                for (int f = 0; f < Math.Max(1, a.Frames - 1); f++)
+                {
+                    var pos = ev.GetFramePosition(f);
+                    var row = new float[a.Tracks.Count][];
+                    for (int t = 0; t < a.Tracks.Count; t++)
+                    {
+                        if (a.Tracks[t].Format == EmotePreviewer.Core.Rage.Anim.TrackDef.FormatQuaternion) { var q = ev.EvaluateQuaternion(t, pos, false); row[t] = new[] { q.X, q.Y, q.Z, q.W }; }
+                        else { var v = ev.EvaluateVector(t, pos, false); row[t] = new[] { v.X, v.Y, v.Z, v.W }; }
+                    }
+                    frames.Add(row);
+                }
+                animations.Add(new
+                {
+                    frames = a.Frames, sequenceFrameLimit = a.SequenceFrameLimit, duration = a.Duration,
+                    tracks = a.Tracks.Select(t => new[] { (int)t.BoneId, (int)t.Format, (int)t.TrackId }).ToList(),
+                    channelTypes = a.Sequences.Select(s => Enumerable.Range(0, a.Tracks.Count).Select(t => s.GetChannelTypes(t).Select(c => (int)c).ToArray()).ToArray()).ToList(),
+                    values = frames,
+                });
+            }
+            ai++;
+        }
+        if (dump != null)
+        {
+            File.WriteAllText(dump, JsonSerializer.Serialize(new { dictionary = dict.Name, clip = clip.Name, timing = clip.TimingInfo, animations }));
+            Console.WriteLine($"wrote {dump}");
+        }
+        break;
+    }
     case "axes":
     {
         // devtools axes <dictionary> <clip> <bone> [bone...]   rotation-axis statistics of a bone's local rotation relative to its bind pose
@@ -920,7 +986,7 @@ void BakeAll(int limit)
     var skel = gd.LoadSkeleton("mp_m_freemode_01") ?? throw new FileNotFoundException("mp_m_freemode_01.yft not found");
     var anims = cat.Entries.Where(e => e.Kind == EmoteKind.Animation && !e.IsAnimal && e.Dictionary != null && e.Clip != null).Take(limit).ToList();
     var cache = new Dictionary<string, IClipDictionary?>(StringComparer.OrdinalIgnoreCase);
-    int baked = 0, skipped = 0, failed = 0, warned = 0;
+    int baked = 0, skipped = 0, failed = 0, warned = 0, listClips = 0, listClipsWindowed = 0;
     long totalBytes = 0, maxBytes = 0;
     string? biggest = null;
     var fpsHist = new SortedDictionary<int, int>();
@@ -936,6 +1002,12 @@ void BakeAll(int limit)
         }
         var clip = dict?.FindClip(e.Clip!);
         if (clip == null) { skipped++; continue; }
+        // List clips (ClipAnimations) usually window long scene animations; count them (and the ones whose window starts late).
+        if (clip is GtClip gt && gt.TimingInfo.StartsWith("list", StringComparison.Ordinal))
+        {
+            listClips++;
+            if (gt.RawClip is RageLib.Resources.GTA5.PC.Clips.ClipAnimations la && la.Animations?.Entries != null && la.Animations.Entries.Any(x => x != null && x.StartTime > 0.01f)) listClipsWindowed++;
+        }
         try
         {
             var sw = Stopwatch.StartNew();
@@ -958,6 +1030,7 @@ void BakeAll(int limit)
     }
     Console.WriteLine($"baked {baked} clips in {swAll.Elapsed.TotalSeconds:F1} s ({(baked > 0 ? swAll.Elapsed.TotalMilliseconds / baked : 0):F1} ms avg, slowest {slowest:F0} ms {slowestName})");
     Console.WriteLine($"  skipped (no dict/clip): {skipped}, failed: {failed}, with warnings: {warned}");
+    Console.WriteLine($"  list clips (ClipAnimations): {listClips}, of which {listClipsWindowed} start inside their animation (StartTime > 0)");
     Console.WriteLine($"  total {totalBytes / (1024 * 1024)} MB, biggest {maxBytes / 1024} KB: {biggest}");
     Console.WriteLine($"  fps: {string.Join(", ", fpsHist.Select(kv => $"{kv.Key}={kv.Value}"))}");
 }

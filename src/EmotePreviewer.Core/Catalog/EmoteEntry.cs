@@ -51,6 +51,31 @@ public sealed record SharedPlacement
         new() { Kind = PlacementKind.Attach, Bone = bone, Placement = placement };
 }
 
+/// <summary>
+/// Bits of the animation flag the menus pass to the game (rpemotes <c>AnimFlag</c>: LOOP = 1, STUCK = 50, MOVING = 51;
+/// scully <c>Flags.Loop / Move / Stuck</c> mapped the same way). The game plays flag 0 / 1 emotes in the primary slot
+/// (full body, one clip at a time) and flags with <see cref="Secondary"/> in the secondary slot; with <see cref="UpperBody"/>
+/// only the SKEL_Spine_Root subtree comes from the secondary clip, the pelvis and legs stay with the primary one.
+/// </summary>
+public static class AnimFlags
+{
+    public const int Looping = 1;
+    public const int HoldLastFrame = 2;
+    public const int UpperBody = 16;
+    public const int Secondary = 32;
+
+    /// <summary>rpemotes <c>AnimFlag.LOOP</c> / scully <c>Loop</c>.</summary>
+    public const int Loop = Looping;
+    /// <summary>rpemotes <c>AnimFlag.STUCK</c> / scully <c>Stuck</c>: secondary, upper body, holds the last frame.</summary>
+    public const int Stuck = Secondary | UpperBody | HoldLastFrame;
+    /// <summary>rpemotes <c>AnimFlag.MOVING</c> / scully <c>Move</c>: secondary, upper body, looping.</summary>
+    public const int Moving = Stuck | Looping;
+
+    public static bool IsLooping(int flag) => (flag & Looping) != 0;
+    public static bool IsSecondary(int flag) => (flag & Secondary) != 0;
+    public static bool IsUpperBody(int flag) => (flag & UpperBody) != 0;
+}
+
 public sealed class EmoteEntry
 {
     /// <summary>
@@ -75,8 +100,14 @@ public sealed class EmoteEntry
     /// <summary>Scenario name, walk clipset or expression clip depending on Kind.</summary>
     public string? Name { get; init; }
 
-    public bool Loop { get; init; }
-    public bool Move { get; init; }
+    /// <summary>The animation flag the menu passes to the game (see <see cref="AnimFlags"/>); 0 when the resource gives none.</summary>
+    public int AnimFlag { get; init; }
+    /// <summary>LOOPING bit of <see cref="AnimFlag"/> (also set by MOVING).</summary>
+    public bool Loop => AnimFlags.IsLooping(AnimFlag);
+    /// <summary>SECONDARY bit: the emote plays in the game's secondary slot, so the ped can walk and a primary emote keeps playing underneath.</summary>
+    public bool Move => AnimFlags.IsSecondary(AnimFlag);
+    /// <summary>UPPERBODY bit: only the spine, arms and head come from this clip when it plays as a secondary.</summary>
+    public bool UpperBody => AnimFlags.IsUpperBody(AnimFlag);
     public int? DurationMs { get; init; }
     public string? ExitEmote { get; init; }
     public IReadOnlyList<EmoteProp> Props { get; init; } = Array.Empty<EmoteProp>();

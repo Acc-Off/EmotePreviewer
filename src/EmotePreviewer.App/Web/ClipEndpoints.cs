@@ -57,6 +57,12 @@ public static class ClipEndpoints
         api.MapGet("/clips/{dict}/{clip}.bin", (string dict, string clip, string? ped, HttpContext ctx, ClipService clips, SettingsStore settings) => Guard(() =>
             Binary(ctx, clips.BakeClip(Decode(dict), Decode(clip), PedName(ped, settings)))));
 
+        // Clips of movement clip sets, resolved through clip_sets.ymt (the viewer's neutral pose is move_m@generic / idle).
+        api.MapGet("/clipsets/{set}/{clip}", (string set, string clip, string? ped, ClipService clips, SettingsStore settings) => Guard(() =>
+            Results.Json(Meta(clips.BakeClipSetClip(Decode(set), Decode(clip), PedName(ped, settings))), AppHost.Json)));
+        api.MapGet("/clipsets/{set}/{clip}.bin", (string set, string clip, string? ped, HttpContext ctx, ClipService clips, SettingsStore settings) => Guard(() =>
+            Binary(ctx, clips.BakeClipSetClip(Decode(set), Decode(clip), PedName(ped, settings)))));
+
         api.MapGet("/props/{model}", (string model, MeshService meshes, TextureService textures) => Guard(() => Results.Json(MeshMeta(meshes.Get(Decode(model)), textures), AppHost.Json)));
         api.MapGet("/props/{model}.bin", (string model, HttpContext ctx, MeshService meshes) => Guard(() => MeshBinary(ctx, meshes.Get(Decode(model)))));
 

@@ -83,6 +83,9 @@ export const api = {
   /** Same for an arbitrary clip of a dictionary (manual selection). */
   dictionaryClip: (dictionary: string, clip: string, ped: string | null, signal?: AbortSignal) =>
     loadClip(`/api/clips/${encodeURIComponent(dictionary)}/${encodeURIComponent(clip)}`, pedQuery(ped), signal),
+  /** A clip of a movement clip set (`move_m@generic` / `idle`), resolved through the game's clip set table. */
+  clipSetClip: (set: string, clip: string, ped: string | null, signal?: AbortSignal) =>
+    loadClip(`/api/clipsets/${encodeURIComponent(set)}/${encodeURIComponent(clip)}`, pedQuery(ped), signal),
   /** Prop mesh (meta + vertex data) for a model name. */
   propMesh: (model: string, signal?: AbortSignal) => loadMesh(`/api/props/${encodeURIComponent(model)}`, signal),
   /** Skinned component of a ped (a slot such as uppr, or an explicit file name such as uppr_003_r). */

@@ -65,6 +65,15 @@ public sealed class ApiTests
         Assert.Equal("animation", wave.GetProperty("kind").GetString());
         Assert.Equal("friends@frj@ig_1", wave.GetProperty("dictionary").GetString());
         Assert.True(wave.GetProperty("loop").GetBoolean());
+        Assert.Equal(1, wave.GetProperty("flag").GetInt32());
+        Assert.Equal("primary", wave.GetProperty("slot").GetString());
+        Assert.False(wave.GetProperty("upperBody").GetBoolean());
+        // MOVING = 51 plays in the game's secondary slot with the upper-body mask.
+        var carry = entries.Single(e => e.GetProperty("command").GetString() == "carry");
+        Assert.Equal(51, carry.GetProperty("flag").GetInt32());
+        Assert.Equal("secondary", carry.GetProperty("slot").GetString());
+        Assert.True(carry.GetProperty("upperBody").GetBoolean());
+        Assert.True(carry.GetProperty("move").GetBoolean());
         Assert.False(wave.GetProperty("previewable").GetBoolean());
         Assert.Equal("not-indexed", wave.GetProperty("previewReason").GetString());
 
@@ -90,6 +99,16 @@ public sealed class ApiTests
         Assert.Equal(11, status.GetProperty("catalogEntries").GetInt32());
         Assert.Equal(JsonValueKind.Null, wave.GetProperty("partner").ValueKind);
         Assert.Equal(JsonValueKind.Null, wave.GetProperty("partnerCommand").ValueKind);
+    }
+
+    [Fact]
+    public async Task ClipSetClipsNeedTheGameData()
+    {
+        await using var host = await TestHost.StartAsync();
+        var response = await host.Client.GetAsync("/api/clipsets/move_m%40generic/idle");
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("GTA_NOT_READY", body.GetProperty("error").GetProperty("code").GetString());
     }
 
     [Fact]
@@ -128,7 +147,7 @@ public sealed class ApiTests
         Assert.Equal(6, carry.GetProperty("offset").GetArrayLength());
         var carry2 = entries["carry2"].GetProperty("partner").GetProperty("placement");
         Assert.Equal("main", carry2.GetProperty("attached").GetString());
-        Assert.True(entries["carry2"].GetProperty("partner").GetProperty("loop").GetBoolean() == false); // carry is MOVING, not LOOP
+        Assert.True(entries["carry2"].GetProperty("partner").GetProperty("loop").GetBoolean()); // MOVING (51) includes the LOOPING bit
 
         // No placement on either side: the default, flagged as such.
         var punch = entries["punch"].GetProperty("partner").GetProperty("placement");

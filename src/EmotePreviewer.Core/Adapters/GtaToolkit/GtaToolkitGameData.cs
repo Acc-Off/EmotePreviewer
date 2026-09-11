@@ -369,6 +369,17 @@ public sealed class GtaToolkitGameData : IGameDataSource
         return true;
     }
 
+    /// <summary>Writes a clip dictionary out of the archives as a plain resource file (diagnostics).</summary>
+    public bool ExportClipDictionary(string name, string outPath)
+    {
+        if (!_ycd.TryGetValue(JenkinsHash.HashLower(name), out var entry)) return false;
+        using var ms = ExportResource(entry.File);
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath))!);
+        using var outFile = File.Create(outPath);
+        ms.CopyTo(outFile);
+        return true;
+    }
+
     /// <summary>Size of the archive entry, used together with the path as a cheap ETag for baked clips.</summary>
     public long? ClipDictionarySize(string name) => _ycd.TryGetValue(JenkinsHash.HashLower(name), out var e) ? (long)e.File.Size : null;
 
@@ -992,6 +1003,8 @@ public sealed class GtClip : IClip
                     {
                         AddTracks(e.Animation);
                         NativeFrameRate = Math.Max(NativeFrameRate, FrameRate(e.Animation, e.Rate));
+                        // A list without a duration of its own plays as long as its longest element.
+                        if (!(Duration > 0f)) Duration = Math.Max(Duration, ClipTiming.ClipAnimationDuration(e.StartTime, e.EndTime, e.Rate));
                     }
                 break;
             default:
@@ -1055,10 +1068,12 @@ public sealed class GtClip : IClip
         }
         else if (_list?.Animations?.Entries != null)
         {
-            // Spec §5.4: every element gets the same wrapped clip time; later elements override earlier ones.
+            // Spec §5.4: every element maps the clip time into its own [StartTime, EndTime) window of its animation, exactly
+            // like a single ClipAnimation does (the elements are usually windows of long scene animations); later elements
+            // override earlier ones. Handing every element the raw clip time played the start of those long animations.
             var t = ClipTiming.ClipAnimationsTime((float)time, _list.Duration);
             foreach (var e in _list.Animations.Entries)
-                if (e?.Animation != null) Evaluate(e.Animation, t, into);
+                if (e?.Animation != null) Evaluate(e.Animation, ClipTiming.ClipAnimationTime(t, e.StartTime, e.EndTime, e.Rate), into);
         }
     }
 

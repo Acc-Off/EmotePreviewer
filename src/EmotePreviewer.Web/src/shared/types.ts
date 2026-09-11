@@ -19,6 +19,11 @@ export interface StatusDto {
 }
 
 export type EmoteKind = "animation" | "scenario" | "walk" | "expression";
+/**
+ * The game's two animation slots. A primary emote (flag 0 / 1) poses the whole body and replaces the previous primary;
+ * a secondary one (flags with bit 32, e.g. MOVING = 51 / STUCK = 50) plays on top of it, upper body only when bit 16 is set.
+ */
+export type EmoteSlot = "primary" | "secondary";
 export type PreviewReason = "not-indexed" | "kind" | "animal" | "no-dictionary" | "no-clip";
 
 export interface PropDto {
@@ -75,6 +80,12 @@ export interface EmoteDto {
   name: string | null;
   loop: boolean;
   move: boolean;
+  /** The animation flag the menu passes to the game (LOOP = 1, STUCK = 50, MOVING = 51 …; 0 when none). */
+  flag: number;
+  /** Slot the flag puts the emote in (see `EmoteSlot`). */
+  slot: EmoteSlot;
+  /** UPPERBODY bit: as a secondary only the spine, arms and head come from this clip. */
+  upperBody: boolean;
   durationMs: number | null;
   exitEmote: string | null;
   props: PropDto[];
