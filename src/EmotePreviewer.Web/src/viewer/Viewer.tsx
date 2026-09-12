@@ -217,6 +217,7 @@ export function Viewer() {
   const [playing, setPlaying] = useState(false);
 
   const status = useAppStore((s) => s.status);
+  const connected = useAppStore((s) => s.connected);
   const settings = useAppStore((s) => s.settings);
   const entry = useAppStore(selectEntry);
   const secondary = useAppStore(selectSecondary);
@@ -252,6 +253,9 @@ export function Viewer() {
     };
   }, []);
 
+  // While the server is gone the "exited" overlay (blurred, full screen) covers the canvas; drawing under it would
+  // only make the compositor re-blur the whole window every frame, so the loop stops until the connection is back.
+  useEffect(() => controllerRef.current?.scene.setPaused(connected === false), [connected]);
   useEffect(() => controllerRef.current?.setHelpers(showHelpers), [showHelpers]);
   useEffect(() => controllerRef.current?.setRootMotion(rootMotion), [rootMotion]);
   useEffect(() => controllerRef.current?.setPropsVisible(showProps), [showProps]);

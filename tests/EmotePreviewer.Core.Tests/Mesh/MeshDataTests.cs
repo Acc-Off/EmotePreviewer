@@ -129,6 +129,50 @@ public sealed class MeshDataTests
         Assert.Contains(remapped.Warnings, w => w.Contains("999"));
     }
 
+    /// <summary>
+    /// Breakable props are fragments whose parts (tray, cup, burger) are separate models placed on bones of the
+    /// drawable's own skeleton. Their vertices are stored in bone space, so every part sat at the origin and the cup
+    /// pierced the tray until the bone matrix was applied; with it, the whole mesh fits the drawable's bounding box.
+    /// </summary>
+    [SkippableFact]
+    public void FragmentPartsSitOnTheirBones()
+    {
+        using var gd = OpenOrSkip();
+        Skip.If(!gd.HasDrawable("prop_food_bs_tray_03"), "food tray prop not in this game version");
+        var mesh = gd.LoadDrawable("prop_food_bs_tray_03")!;
+        _out.WriteLine($"{mesh.Name}: {mesh.VertexCount} vertices, bounds {mesh.BoundsMin} .. {mesh.BoundsMax}");
+        Assert.Empty(mesh.Warnings);
+        Assert.False(mesh.IsSkinned);
+        // One sub-mesh per geometry: model 0 is the tray, model 1 the cup (its bone sits 0.139 m above the tray origin),
+        // model 2 the food. The cup must stand on the tray, not sink through it.
+        Assert.Equal(3, mesh.SubMeshes.Count);
+        (float min, float max) ZRange(SubMesh s)
+        {
+            float min = float.MaxValue, max = float.MinValue;
+            for (int i = s.IndexStart; i < s.IndexStart + s.IndexCount; i++)
+            {
+                var z = mesh.Positions[mesh.Indices[i] * 3 + 2];
+                min = Math.Min(min, z); max = Math.Max(max, z);
+            }
+            return (min, max);
+        }
+        var tray = ZRange(mesh.SubMeshes[0]);
+        var cup = ZRange(mesh.SubMeshes[1]);
+        var food = ZRange(mesh.SubMeshes[2]);
+        _out.WriteLine($"z: tray {tray.min:F3}..{tray.max:F3} cup {cup.min:F3}..{cup.max:F3} food {food.min:F3}..{food.max:F3}");
+        // The cup's vertices are centred on its bone (about 13.5 cm below and above it); left in bone space its floor
+        // was 13.5 cm under the tray.
+        Assert.True(cup.min > tray.min - 0.01f, $"cup floor {cup.min} is below the tray floor {tray.min}");
+        Assert.True(cup.min < tray.max + 0.03f, $"cup floats {cup.min - tray.max} above the tray");
+        Assert.True(cup.max > tray.max + 0.15f, $"cup top {cup.max} is not a cup's height above the tray");
+        Assert.True(food.min > tray.min - 0.01f, $"food floor {food.min} is below the tray floor {tray.min}");
+        Assert.All(Enumerable.Range(0, mesh.VertexCount), v =>
+        {
+            var n = new Vector3(mesh.Normals![v * 3], mesh.Normals[v * 3 + 1], mesh.Normals[v * 3 + 2]);
+            Assert.InRange(n.Length(), 0.8f, 1.2f);
+        });
+    }
+
     [SkippableFact]
     public void PropDrawableExtractsWithSanePositions()
     {

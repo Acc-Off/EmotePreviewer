@@ -87,7 +87,8 @@ export class ViewerController {
   constructor(canvas: HTMLCanvasElement) {
     this.scene = new Scene(canvas);
     this.scene.onTick = (dt) => this.tick(dt);
-    this.textures = new TextureCache(this.scene.renderer);
+    // Textures arrive asynchronously; each one that lands needs a frame to show.
+    this.textures = new TextureCache(this.scene.renderer, this.scene.invalidate);
     this.timeline.onFinished = () => this.onFinished?.();
   }
 
@@ -190,15 +191,18 @@ export class ViewerController {
   /** Attaches the loaded prop meshes to a slot's bones (replacing the previous props). */
   setProps(slot: Slot, props: { prop: PropDto; mesh: LoadedMesh | null }[]): void {
     this.slots[slot]?.props.set(props);
+    this.scene.invalidate();
   }
 
   clearProps(slot: Slot): void {
     this.slots[slot]?.props.clear();
+    this.scene.invalidate();
   }
 
   setPropsVisible(on: boolean): void {
     this.showProps = on;
     this.forEach((s) => s.props.setVisible(on));
+    this.scene.invalidate();
   }
 
   /** Debug hook: switch the placement Euler order and re-attach the props. */
@@ -206,6 +210,7 @@ export class ViewerController {
     PropLayer.eulerOrder = order;
     this.forEach((s) => s.props.refresh());
     this.applyPlacement();
+    this.dirty = true;
   }
 
   /** Diffuse textures on props and the peds, or flat colours. */
@@ -215,12 +220,14 @@ export class ViewerController {
       s.props.setTextured(on);
       s.ped.setTextured(on);
     });
+    this.scene.invalidate();
   }
 
   /** Cloth-simulated parts of the ped components (jackets of the story peds), drawn or left out. */
   setCloth(on: boolean): void {
     this.showCloth = on;
     this.forEach((s) => s.ped.setCloth(on));
+    this.scene.invalidate();
   }
 
   /** Whether a slot's loaded ped has cloth-simulated geometry. */
@@ -250,6 +257,7 @@ export class ViewerController {
       s.ped.setVisible(on);
       s.rig.setFigureVisible(!on);
     });
+    this.scene.invalidate();
   }
 
   setHelpers(on: boolean): void {
@@ -321,14 +329,17 @@ export class ViewerController {
     return list;
   }
 
-  private tick(dt: number): void {
+  /** Advances the timeline and re-poses the rigs; returns whether anything changed (the scene draws a frame then). */
+  private tick(dt: number): boolean {
     const moved = this.timeline.advance(dt);
+    const changed = moved || this.dirty;
     const t = this.timeline.time;
     for (const s of this.ordered()) {
-      if ((moved || this.dirty) && s.playback.hasClip) s.playback.pose(s.clipTime(t, "primary"), s.clipTime(t, "secondary"));
-      s.rig.update();
+      if (changed && s.playback.hasClip) s.playback.pose(s.clipTime(t, "primary"), s.clipTime(t, "secondary"));
+      if (changed) s.rig.update();
     }
     this.dirty = false;
+    return changed;
   }
 
   private updateDuration(): void {

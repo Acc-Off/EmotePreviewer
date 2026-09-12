@@ -4,7 +4,7 @@
 
 English | [日本語](README.ja.md)
 
-EmotePreviewer reads the emote definitions of [rpemotes-reborn](https://github.com/alberttheprince/rpemotes-reborn) and [scully_emotemenu](https://github.com/Scullyy/scully_emotemenu), looks up each animation in your GTA V installation and plays it in a 3D viewer in your browser. No server to join, no loading screens: pick an emote from a list of six thousand and see it a second later, with its prop, on the ped of your choice, together with the other person when it is a shared emote. A single Windows executable, nothing to install.
+EmotePreviewer reads the emote definitions of [rpemotes-reborn](https://github.com/alberttheprince/rpemotes-reborn) and [scully_emotemenu](https://github.com/Scullyy/scully_emotemenu) (the older [rpemotes](https://github.com/Daudeuf/rpemotes) and [dpemotes](https://github.com/andristum/dpemotes) too), looks up each animation in your GTA V installation and plays it in a 3D viewer in your browser. No server to join, no loading screens: pick an emote from a list of six thousand and see it a second later, with its prop, on the ped of your choice, together with the other person when it is a shared emote. A single Windows executable, nothing to install.
 
 <p align="center">
   <img src="Docs/images/layer-walk-flag-en.png" alt="A flag-waving upper-body emote layered over the Casual walk style" width="800">
@@ -23,7 +23,7 @@ EmotePreviewer reads the emote definitions of [rpemotes-reborn](https://github.c
 | **Animal emotes** | Switch to the right animal (rottweiler, pug, cat, coyote, …) automatically |
 | **Walk styles** | Resolved through the game's clip set table and played as their walk cycle.<br>Scenarios and facial expressions are listed with a reason why they cannot be previewed |
 | **Any clip of a dictionary** | See the other clips next to an emote's by choosing one from the dictionary, without leaving the viewer |
-| **Resources from GitHub** | Fetch and update rpemotes-reborn / scully_emotemenu from the settings page.<br>Or add a local folder |
+| **Resources from GitHub** | Fetch and update rpemotes-reborn / scully_emotemenu (or the older rpemotes / dpemotes) from the settings page.<br>Or add a local folder |
 | **Made for editing a resource** | Folder resources are watched: a `.ycd` or Lua file you add or overwrite is picked up a moment later.<br>The clip on screen is swapped in place without losing the playhead.<br>A **Rescan** button does the same on demand |
 
 <p align="center">
@@ -41,7 +41,7 @@ EmotePreviewer reads the emote definitions of [rpemotes-reborn](https://github.c
 - Windows 10 / 11 (x64) and a browser (Edge, Chrome, …).
 - **GTA V for PC, Legacy edition** (Steam, Rockstar Games Launcher or Epic). It is the source of the animations, skeletons, meshes and textures. GTA V Enhanced is not supported. Without the game the list and search still work, but nothing plays.
 - **Four key files** created from your own game with [EmotePreviewer Key Tool](https://github.com/Acc-Off/EmotePreviewerKeyTool) (see step 1 below). The archives are encrypted; EmotePreviewer contains no key material.
-- The emote resources themselves. The settings page downloads rpemotes-reborn and scully_emotemenu from GitHub; a copy you already have works as a folder.
+- The emote resources themselves. The settings page downloads rpemotes-reborn and scully_emotemenu (and the older rpemotes and dpemotes) from GitHub; a copy you already have works as a folder.
 
 ## Getting started
 

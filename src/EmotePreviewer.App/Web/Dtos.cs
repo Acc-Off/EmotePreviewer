@@ -222,7 +222,7 @@ public sealed record ResourcesDto(IReadOnlyList<ResourceItemDto> Resources, IRea
             var path = r.Origin == "github" ? manager.ResourceFolder(r.Id) : r.Path;
             sources.TryGetValue(r.Id, out var src);
             jobs.TryGetValue(r.Id, out var job);
-            var kind = src?.Kind ?? (Directory.Exists(path) ? ResourceSource.DetectKind(ResourceSource.ResolveRoot(path)) switch { ResourceKind.RpEmotes => "rpemotes", ResourceKind.Scully => "scully", _ => "unknown" } : "unknown");
+            var kind = src?.Kind ?? (Directory.Exists(path) ? ResourceSource.KindName(ResourceSource.DetectKind(ResourceSource.ResolveRoot(path))) : "unknown");
             return new ResourceItemDto(r.Id, path, r.Origin, r.Ref, r.Repository, r.Enabled, kind, src?.Entries ?? 0, Directory.Exists(path),
                 r.Origin == "github" ? manager.ReadSourceInfo(r.Id) : null, job);
         }).ToList();

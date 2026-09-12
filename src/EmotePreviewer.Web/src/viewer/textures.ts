@@ -120,9 +120,16 @@ function toTexture(dds: ParsedDds): THREE.Texture {
 export class TextureCache {
   private readonly cache = new Map<string, Promise<THREE.Texture | null>>();
   private readonly support: GpuSupport;
+  private readonly onChange: (() => void) | undefined;
 
-  constructor(renderer: THREE.WebGLRenderer) {
+  constructor(renderer: THREE.WebGLRenderer, onChange?: () => void) {
     this.support = gpuSupport(renderer);
+    this.onChange = onChange;
+  }
+
+  /** Tells the scene that a material changed after a texture arrived (or failed), so the next frame shows it. */
+  changed(): void {
+    this.onChange?.();
   }
 
   /** The URL (with the server's ETag as the cache-busting version) a mesh texture is fetched from. */
@@ -211,11 +218,12 @@ export function buildMaterials(
           if (texture) {
             m.map = texture;
             m.needsUpdate = true;
-            return;
+          } else {
+            // Unavailable: put the plain material back on every group that waited for this texture (the array is
+            // shared with the mesh, so the change shows on the next frame).
+            for (let i = 0; i < list.length; i++) if (list[i] === m) list[i] = plain;
           }
-          // Unavailable: put the plain material back on every group that waited for this texture (the array is
-          // shared with the mesh, so the change shows on the next frame).
-          for (let i = 0; i < list.length; i++) if (list[i] === m) list[i] = plain;
+          textures.changed();
         }),
       );
     }

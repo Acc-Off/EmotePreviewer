@@ -77,7 +77,7 @@ public sealed class ResourceApiTests
         await using var host = await TestHost.StartAsync(o => o.ConfigureServices = s => s.AddSingleton<HttpMessageHandler>(github));
 
         var templates = await host.Client.GetFromJsonAsync<JsonElement>("/api/resources");
-        Assert.Equal(3, templates.GetProperty("templates").GetArrayLength());
+        Assert.Equal(ResourceManager.Templates.Count, templates.GetProperty("templates").GetArrayLength());
         Assert.All(templates.GetProperty("templates").EnumerateArray(), t => Assert.False(t.GetProperty("installed").GetBoolean()));
 
         var response = await host.Client.PostAsJsonAsync("/api/resources", new { origin = "github", repository = "someone/fake-emotes", @ref = "main" });

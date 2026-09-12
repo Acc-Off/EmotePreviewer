@@ -60,9 +60,9 @@ public static class CatalogBuilder
             {
                 loaded = kind switch
                 {
-                    ResourceKind.RpEmotes => RpEmotesLoader.Load(source.Id, root),
+                    ResourceKind.RpEmotes or ResourceKind.DpEmotes => RpEmotesLoader.Load(source.Id, root),
                     ResourceKind.Scully => ScullyLoader.Load(source.Id, root),
-                    _ => throw new InvalidDataException("unrecognised resource layout (expected types.lua + client/AnimationList.lua, or shared/data/emotes/)"),
+                    _ => throw new InvalidDataException("unrecognised resource layout (expected client/AnimationList.lua, or shared/data/emotes/)"),
                 };
             }
             catch (Exception ex)

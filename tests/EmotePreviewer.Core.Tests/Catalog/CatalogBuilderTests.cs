@@ -26,6 +26,15 @@ public sealed class CatalogBuilderTests : IDisposable
         return dir;
     }
 
+    /// <summary>The legacy rpemotes layout: no types.lua. dpemotes additionally keeps its list under Client/ (capital C).</summary>
+    string WriteLegacyList(string name, string clientFolder, string animationList)
+    {
+        var dir = Path.Combine(_root, name);
+        Directory.CreateDirectory(Path.Combine(dir, clientFolder));
+        File.WriteAllText(Path.Combine(dir, clientFolder, "AnimationList.lua"), animationList, Encoding.UTF8);
+        return dir;
+    }
+
     string WriteScully(string name, string emotesLua)
     {
         var dir = Path.Combine(_root, name);
@@ -39,8 +48,13 @@ public sealed class CatalogBuilderTests : IDisposable
     {
         var rp = WriteRpEmotes("rp", "RP = {}\n");
         var sc = WriteScully("sc", "return { type = 'general_emotes', options = {} }\n");
+        var legacy = WriteLegacyList("legacy", "client", "-- banner\nRP = {}\n");
+        var dp = WriteLegacyList("dp", "Client", "DP = {}\n");
         Assert.Equal(ResourceKind.RpEmotes, ResourceSource.DetectKind(rp));
         Assert.Equal(ResourceKind.Scully, ResourceSource.DetectKind(sc));
+        Assert.Equal(ResourceKind.RpEmotes, ResourceSource.DetectKind(legacy));
+        Assert.Equal(ResourceKind.DpEmotes, ResourceSource.DetectKind(dp));
+        Assert.Equal("dpemotes", ResourceSource.KindName(ResourceKind.DpEmotes));
         Assert.Equal(ResourceKind.Unknown, ResourceSource.DetectKind(_root));
         Assert.Equal(ResourceKind.Unknown, ResourceSource.DetectKind(Path.Combine(_root, "missing")));
 
@@ -90,6 +104,82 @@ public sealed class CatalogBuilderTests : IDisposable
         Assert.True(dance.Loop);
         Assert.True(dance.IsCustom);
         Assert.Equal(Path.Combine(rp, "stream", "bnr_dance_short.ycd"), dance.CustomYcdPath);
+    }
+
+    [Fact]
+    public void LegacyRpEmotesLoadsWithoutTypesLuaAndWithConfigReferences()
+    {
+        // Shape of Daudeuf/rpemotes: boolean options, PtfxInfo read from the resource config, add-on list merged inline.
+        var legacy = WriteLegacyList("legacy", "client", """
+            RP = {}
+            RP.Expressions = { ["Angry"] = { "mood_angry_1" }, ["Grumpy2"] = { "mood_drivefast_1", "Grumpy 2" } }
+            RP.AnimalEmotes = {
+                ["bdogpee"] = { "creatures@rottweiler@amb@world_dog_barking@idle_a", "idle_a", "Pee (big dog)", AnimationOptions = {
+                    EmoteLoop = true,
+                    PtfxAsset = "scr_amb_chop", PtfxName = "ent_anim_dog_peeing",
+                    PtfxInfo = Config.Languages[Config.MenuLanguage]['pee'],
+                } },
+            }
+            RP.Emotes = { ["atm"] = { "Scenario", "PROP_HUMAN_ATM", "ATM" } }
+            """);
+        File.WriteAllText(Path.Combine(legacy, "client", "AnimationListCustom.lua"), """
+            local CustomDP = {}
+            CustomDP.Emotes = { ["custom"] = { "d", "c", "Custom", AnimationOptions = { EmoteMoving = true } } }
+            for arrayName, array in pairs(CustomDP) do
+                if RP[arrayName] then
+                    for emoteName, emoteData in pairs(array) do RP[arrayName][emoteName] = emoteData end
+                end
+            end
+            CustomDP = nil
+            """, Encoding.UTF8);
+
+        var catalog = CatalogBuilder.Build(new[] { new ResourceSource("legacy", legacy) });
+        Assert.Empty(catalog.Warnings);
+        Assert.Equal(5, catalog.Entries.Count);
+        Assert.Equal("mood_angry_1", catalog.FindById("legacy/Expressions/Angry")!.Name);
+        Assert.Equal("Grumpy 2", catalog.FindById("legacy/Expressions/Grumpy2")!.Label);
+        var pee = catalog.FindById("legacy/AnimalEmotes/bdogpee")!;
+        Assert.True(pee.Loop);
+        Assert.True(pee.IsAnimal);
+        Assert.Equal(EmoteKind.Scenario, catalog.FindById("legacy/Emotes/atm")!.Kind);
+        Assert.Equal(51, catalog.FindById("legacy/Emotes/custom")!.AnimFlag);
+    }
+
+    [Fact]
+    public void DpEmotesLoadsFromTheDpGlobalWithItsExpressionShape()
+    {
+        var dp = WriteLegacyList("dp", "Client", """
+            DP = {}
+            DP.Expressions = { ["Angry"] = { "Expression", "mood_angry_1" } }
+            DP.Walks = { ["Alien"] = { "move_m@alien" } }
+            DP.Shared = {
+                ["hug"] = { "mp_ped_interaction", "kisses_guy_a", "Hug", "hug2", AnimationOptions = { EmoteMoving = false, EmoteDuration = 5000, SyncOffsetFront = 1.05 } },
+                ["hug2"] = { "mp_ped_interaction", "kisses_guy_b", "Hug 2", "hug", AnimationOptions = { EmoteMoving = false, EmoteDuration = 5000 } },
+            }
+            DP.PropEmotes = {
+                ["umbrella"] = { "amb@world_human_drinking@coffee@male@base", "base", "Umbrella", AnimationOptions = {
+                    Prop = "p_amb_brolly_01", PropBone = 57005, PropPlacement = { 0.15, 0.005, 0.0, 87.0, -20.0, 180.0 }, EmoteLoop = true, EmoteMoving = true } },
+            }
+            """);
+
+        var catalog = CatalogBuilder.Build(new[] { new ResourceSource("dp", dp) });
+        Assert.Empty(catalog.Warnings);
+        Assert.Equal(5, catalog.Entries.Count);
+        var angry = catalog.FindById("dp/Expressions/Angry")!;
+        Assert.Equal(EmoteKind.Expression, angry.Kind);
+        Assert.Equal("mood_angry_1", angry.Name);
+        Assert.Equal("Angry", angry.Label);
+        var walk = catalog.FindById("dp/Walks/Alien")!;
+        Assert.Equal(EmoteKind.Walk, walk.Kind);
+        Assert.Equal("Alien", walk.Label);
+        var hug = catalog.FindById("dp/Shared/hug")!;
+        Assert.Equal("hug2", hug.PartnerCommand);
+        Assert.Equal("dp/Shared/hug2", hug.PartnerId);
+        Assert.Equal(PlacementKind.Offset, hug.Placement!.Kind);
+        Assert.Equal(1.05f, hug.Placement.Front, 3);
+        var umbrella = catalog.FindById("dp/PropEmotes/umbrella")!;
+        Assert.Equal(51, umbrella.AnimFlag);
+        Assert.Equal("p_amb_brolly_01", Assert.Single(umbrella.Props).Model);
     }
 
     [Fact]

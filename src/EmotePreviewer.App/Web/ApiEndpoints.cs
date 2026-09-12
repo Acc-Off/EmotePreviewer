@@ -116,7 +116,7 @@ public static class ApiEndpoints
             return Results.Json(new
             {
                 path = root,
-                kind = kind switch { ResourceKind.RpEmotes => "rpemotes", ResourceKind.Scully => "scully", _ => "unknown" },
+                kind = ResourceSource.KindName(kind),
                 suggestedId = ResourceSource.MakeId(Path.GetFileName(root.TrimEnd('\\', '/'))),
             }, AppHost.Json);
         });

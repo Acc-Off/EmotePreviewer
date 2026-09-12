@@ -29,6 +29,8 @@ public sealed class ResourceManager
         new ResourceTemplate("rpemotes-reborn", "alberttheprince/rpemotes-reborn", "master", "rpemotes", "rpemotes-reborn (official repository)"),
         new ResourceTemplate("rpemotes-reborn-nui", "Jerrys-C/rpemotes-reborn-nui", "master", "rpemotes", "rpemotes-reborn with a NUI menu"),
         new ResourceTemplate("scully_emotemenu", "Scullyy/scully_emotemenu", "main", "scully", "scully_emotemenu"),
+        new ResourceTemplate("rpemotes", "Daudeuf/rpemotes", "master", "rpemotes", "rpemotes (legacy, before rpemotes-reborn)"),
+        new ResourceTemplate("dpemotes", "andristum/dpemotes", "master", "dpemotes", "dpemotes"),
     };
 
     public const string SourceFileName = "source.json";
@@ -105,7 +107,7 @@ public sealed class ResourceManager
     {
         var root = ResourceSource.ResolveRoot(path);
         var kind = ResourceSource.DetectKind(root);
-        if (kind == ResourceKind.Unknown) throw new ResourceException("UNKNOWN_RESOURCE_LAYOUT", $"{path} is not an rpemotes-style or scully_emotemenu folder");
+        if (kind == ResourceKind.Unknown) throw new ResourceException("UNKNOWN_RESOURCE_LAYOUT", $"{path} is not an rpemotes / dpemotes / scully_emotemenu folder");
         ResourceSetting added;
         lock (_settingsLock)
         {
@@ -279,7 +281,7 @@ public sealed class ResourceManager
             // GitHub zips wrap everything in <name>-<branch>/; use that folder as the resource root.
             var root = ResourceSource.ResolveRoot(extractPath);
             if (ResourceSource.DetectKind(root) == ResourceKind.Unknown)
-                throw new ResourceException("UNKNOWN_RESOURCE_LAYOUT", $"{repository} does not look like an rpemotes-style or scully_emotemenu resource");
+                throw new ResourceException("UNKNOWN_RESOURCE_LAYOUT", $"{repository} does not look like an rpemotes / dpemotes / scully_emotemenu resource");
 
             if (Directory.Exists(target)) Directory.Delete(target, recursive: true);
             Directory.Move(root, target);

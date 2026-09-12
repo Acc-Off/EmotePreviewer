@@ -63,7 +63,7 @@ Starting a second exe opens the URL of the running instance in the browser and e
 
 ### How a preview is produced
 
-1. The catalog is built from the Lua data files of each resource (rpemotes-reborn `AnimationList.lua`, scully `shared/data/*.lua`) in about 0.1 s. Every entry gets a stable id `source/category/command`.
+1. The catalog is built from the Lua data files of each resource (`AnimationList.lua` of the rpemotes family — rpemotes-reborn, the older rpemotes and dpemotes — and scully `shared/data/*.lua`) in about 0.1 s. Every entry gets a stable id `source/category/command`.
 2. The game archives are indexed (about 1.5 s): every `.ycd`, `.yft`, `.ydr`, `.ydd` and `.ytd` by name hash, `update.rpf` and the DLC packs in `dlclist.xml` order, later archives overriding earlier ones.
 3. Once indexed, each entry is checked for a dictionary and a clip. Walk styles are resolved through `clip_sets.ymt` (own dictionary, then fallback sets). The result is `previewable` + `previewReason` in the catalog DTO.
 4. When an entry is selected the clip is decoded and baked to local bone transforms at its native frame rate (capped at 60 fps) for the configured ped's skeleton, and served as a float32 block. The browser builds a three.js bone hierarchy, plays the block with an `AnimationMixer`, composes root motion client-side, and attaches props and the partner ped by bone.

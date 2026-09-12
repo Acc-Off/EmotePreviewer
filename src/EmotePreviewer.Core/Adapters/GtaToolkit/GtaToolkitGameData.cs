@@ -562,6 +562,16 @@ public sealed class GtaToolkitGameData : IGameDataSource
     }
 
     /// <summary>Raw drawable dictionary by name (component peds keep all their parts in <c>&lt;ped&gt;.ydd</c>).</summary>
+    /// <summary>Raw fragment (<c>.yft</c>) by name, for diagnostics; null when not indexed.</summary>
+    public FragType? LoadRawFragment(string name)
+    {
+        if (!_yft.TryGetValue(JenkinsHash.HashLower(name), out var entry)) return null;
+        using var ms = ExportResource(entry.File);
+        var res = new Resource7<FragType>();
+        res.Load(ms);
+        return res.ResourceData;
+    }
+
     public PgDictionary64<GtaDrawable>? LoadRawDrawableDictionary(string name)
     {
         if (!_ydd.TryGetValue(JenkinsHash.HashLower(name), out var entry)) return null;

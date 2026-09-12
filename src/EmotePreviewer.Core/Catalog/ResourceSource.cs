@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace EmotePreviewer.Core.Catalog;
 
 /// <summary>Where a resource came from.</summary>
@@ -13,8 +15,13 @@ public enum ResourceOrigin
 public enum ResourceKind
 {
     Unknown,
-    /// <summary>rpemotes / rpemotes-reborn: <c>types.lua</c> + <c>client/AnimationList.lua</c>.</summary>
+    /// <summary>
+    /// rpemotes / rpemotes-reborn: <c>client/AnimationList.lua</c> filling the global <c>RP</c> (<c>types.lua</c> is
+    /// optional; the legacy rpemotes has none and uses boolean options only).
+    /// </summary>
     RpEmotes,
+    /// <summary>dpemotes: <c>Client/AnimationList.lua</c> filling the global <c>DP</c> (same layout otherwise).</summary>
+    DpEmotes,
     /// <summary>scully_emotemenu: <c>shared/data/emotes/*.lua</c>.</summary>
     Scully,
 }
@@ -26,11 +33,51 @@ public sealed record ResourceSource(string Id, string Path, ResourceOrigin Origi
     public static ResourceKind DetectKind(string folder)
     {
         if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder)) return ResourceKind.Unknown;
-        if (File.Exists(System.IO.Path.Combine(folder, "client", "AnimationList.lua")) && File.Exists(System.IO.Path.Combine(folder, "types.lua")))
-            return ResourceKind.RpEmotes;
+        if (FindAnimationList(folder) is { } list)
+            return DeclaresDpGlobal(list) ? ResourceKind.DpEmotes : ResourceKind.RpEmotes;
         if (Directory.Exists(System.IO.Path.Combine(folder, "shared", "data", "emotes")))
             return ResourceKind.Scully;
         return ResourceKind.Unknown;
+    }
+
+    /// <summary>Short name of a kind as used by the API and the settings UI.</summary>
+    public static string KindName(ResourceKind kind) => kind switch
+    {
+        ResourceKind.RpEmotes => "rpemotes",
+        ResourceKind.DpEmotes => "dpemotes",
+        ResourceKind.Scully => "scully",
+        _ => "unknown",
+    };
+
+    /// <summary>
+    /// <c>client/AnimationList.lua</c> of an rpemotes-family resource, or null. The folder is matched without regard to
+    /// case because dpemotes ships <c>Client/</c> and resources are also used on case-sensitive servers.
+    /// </summary>
+    public static string? FindAnimationList(string folder)
+    {
+        if (!Directory.Exists(folder)) return null;
+        foreach (var dir in Directory.EnumerateDirectories(folder))
+        {
+            if (!string.Equals(System.IO.Path.GetFileName(dir), "client", StringComparison.OrdinalIgnoreCase)) continue;
+            var file = System.IO.Path.Combine(dir, "AnimationList.lua");
+            if (File.Exists(file)) return file;
+        }
+        return null;
+    }
+
+    static readonly Regex DpGlobal = new(@"^\s*DP\s*=\s*\{", RegexOptions.Multiline);
+
+    /// <summary>dpemotes lists start with <c>DP = {}</c>; rpemotes lists with <c>RP = {}</c> (after a comment banner).</summary>
+    static bool DeclaresDpGlobal(string animationList)
+    {
+        try
+        {
+            using var reader = new StreamReader(animationList);
+            var buffer = new char[4096];
+            var read = reader.Read(buffer, 0, buffer.Length);
+            return DpGlobal.IsMatch(new string(buffer, 0, read));
+        }
+        catch (IOException) { return false; }
     }
 
     /// <summary>

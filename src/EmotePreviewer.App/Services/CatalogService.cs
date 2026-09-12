@@ -186,7 +186,7 @@ public sealed class CatalogService : IDisposable
         }
         var counts = catalog.Entries.GroupBy(e => e.Source).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
         var sources = catalog.Sources.Select(s => new CatalogSourceDto(s.Id, s.Path, s.Origin == ResourceOrigin.GitHub ? "github" : "folder", s.Ref,
-            ResourceSource.DetectKind(ResourceSource.ResolveRoot(s.Path)) switch { ResourceKind.RpEmotes => "rpemotes", ResourceKind.Scully => "scully", _ => "unknown" },
+            ResourceSource.KindName(ResourceSource.DetectKind(ResourceSource.ResolveRoot(s.Path))),
             counts.TryGetValue(s.Id, out var c) ? c : 0)).ToList();
         return new CatalogDto(entries, sources, catalog.Warnings, resolved != null, revision);
     }

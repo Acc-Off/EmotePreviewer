@@ -63,7 +63,7 @@ EmotePreviewer.exe [--port 20300] [--data-dir <dir>] [--gta <dir>] [--keys <dir>
 
 ### プレビューができるまで
 
-1. 各リソースの Lua データ（rpemotes-reborn の `AnimationList.lua`、scully の `shared/data/*.lua`）からカタログを約 0.1 秒で組む。エントリには安定した id `source/category/command` が付く。
+1. 各リソースの Lua データ（rpemotes 系 = rpemotes-reborn・旧 rpemotes・dpemotes の `AnimationList.lua`、scully の `shared/data/*.lua`）からカタログを約 0.1 秒で組む。エントリには安定した id `source/category/command` が付く。
 2. ゲームのアーカイブを索引する（約 1.5 秒）。`.ycd` / `.yft` / `.ydr` / `.ydd` / `.ytd` を名前ハッシュで、`update.rpf` と DLC パックは `dlclist.xml` の順に、後のものが前のものを上書きする。
 3. 索引が済んだら各エントリの辞書とクリップの有無を確認する。歩行スタイルは `clip_sets.ymt`（自身の辞書、次にフォールバック先）で解決する。結果はカタログ DTO の `previewable` と `previewReason` になる。
 4. エントリを選ぶとクリップをデコードし、設定中の ped のスケルトンに対してネイティブ fps（上限 60）でローカル変換に焼き込み、float32 ブロックとして配信する。ブラウザは three.js のボーン階層を組み、`AnimationMixer` でブロックを再生し、ルートモーションをクライアント側で合成し、小道具と相手 ped をボーンに取り付ける。

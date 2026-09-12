@@ -3,26 +3,32 @@ using static EmotePreviewer.Core.Catalog.LuaHelpers;
 
 namespace EmotePreviewer.Core.Catalog;
 
-/// <summary>Loads rpemotes-reborn AnimationList.lua (RP.* tables).</summary>
+/// <summary>
+/// Loads the AnimationList.lua of the rpemotes family: rpemotes-reborn (<c>RP</c> tables, <c>types.lua</c> constants),
+/// the legacy rpemotes (<c>RP</c>, boolean options only) and dpemotes (<c>DP</c> tables, <c>Client/</c> folder).
+/// </summary>
 public static class RpEmotesLoader
 {
     static readonly HashSet<string> ScenarioTypes = new(StringComparer.Ordinal) { "MaleScenario", "Scenario", "ScenarioObject" };
 
     public static List<EmoteEntry> Load(string sourceId, string resourceRoot)
     {
+        var list = ResourceSource.FindAnimationList(resourceRoot) ?? throw new FileNotFoundException("client/AnimationList.lua not found", resourceRoot);
         using var lua = CreateSandbox();
-        lua.DoFile(Path.Combine(resourceRoot, "types.lua"));
-        lua.DoFile(Path.Combine(resourceRoot, "client", "AnimationList.lua"));
-        var custom = Path.Combine(resourceRoot, "client", "AnimationListCustom.lua");
+        var types = Path.Combine(resourceRoot, "types.lua");
+        if (File.Exists(types)) lua.DoFile(types);
+        lua.DoFile(list);
+        var custom = Path.Combine(Path.GetDirectoryName(list)!, "AnimationListCustom.lua");
         if (File.Exists(custom))
         {
+            // rpemotes-reborn keeps the entries in a local CustomDP table and merges them into RP when EmoteMenu.lua
+            // calls LoadAddonEmotes; the legacy rpemotes merges at the end of the file itself. Call the function when
+            // there is one, otherwise add-on emotes never reach the catalog.
             lua.DoFile(custom);
-            // The file keeps its entries in a local CustomDP table; the resource merges them into RP by calling this
-            // function from EmoteMenu.lua. Do the same, otherwise add-on emotes never reach the catalog.
             if (lua["LoadAddonEmotes"] is LuaFunction merge) merge.Call();
         }
 
-        var rp = Table(lua["RP"]) ?? throw new InvalidDataException("RP table not found");
+        var rp = Table(lua["RP"]) ?? Table(lua["DP"]) ?? throw new InvalidDataException("RP / DP table not found");
         var result = new List<EmoteEntry>();
         // Lua hash tables have no stable iteration order, so categories and commands are sorted to keep ids and listings deterministic.
         foreach (var catObj in rp.Keys.Cast<object>().OrderBy(k => k.ToString(), StringComparer.OrdinalIgnoreCase))
@@ -52,6 +58,9 @@ public static class RpEmotesLoader
         switch (category)
         {
             case "Expressions":
+                // rpemotes: { "mood_angry_1" [, "Label"] }; dpemotes: { "Expression", "mood_angry_1" }.
+                if (string.Equals(a0, "Expression", StringComparison.OrdinalIgnoreCase) && Str(arr.ElementAtOrDefault(1)) is { } exprName)
+                    return new EmoteEntry { Source = sourceId, Category = category, Command = command, Label = Str(arr.ElementAtOrDefault(2)) ?? command, Kind = EmoteKind.Expression, Name = exprName };
                 return new EmoteEntry { Source = sourceId, Category = category, Command = command, Label = Str(arr.ElementAtOrDefault(1)) ?? command, Kind = EmoteKind.Expression, Name = a0 };
             case "Walks":
                 return new EmoteEntry { Source = sourceId, Category = category, Command = command, Label = Str(arr.ElementAtOrDefault(1)) ?? command, Kind = EmoteKind.Walk, Name = a0, Dictionary = a0, Clip = EmoteEntry.WalkClip, AnimFlag = AnimFlags.Loop };

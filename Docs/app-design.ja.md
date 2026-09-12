@@ -182,7 +182,7 @@ EmotePreviewer.exe [--port 20300] [--data-dir <dir>] [--gta <dir>] [--keys <dir>
 | DELETE | `/api/resources/{id}` | 取得したファイルも削除 |
 | GET | `/api/resources/detect?path=` | フォルダの種別判定（`rpemotes` / `scully` / `unknown`）と id の提案 |
 
-既定リソースは `alberttheprince/rpemotes-reborn@master`、`Jerrys-C/rpemotes-reborn-nui@master`、`Scullyy/scully_emotemenu@main`。zip は `https://github.com/{owner}/{repo}/archive/refs/heads/{ref}.zip`。
+既定リソースは `alberttheprince/rpemotes-reborn@master`、`Jerrys-C/rpemotes-reborn-nui@master`、`Scullyy/scully_emotemenu@main`、`Daudeuf/rpemotes@master`（旧 rpemotes）、`andristum/dpemotes@master`。zip は `https://github.com/{owner}/{repo}/archive/refs/heads/{ref}.zip`。
 
 ## 4. Core の拡張
 
@@ -227,9 +227,9 @@ clip.bin（リトルエンディアン float32 の連結）
 ### 4.4 リソースソース
 
 - `ResourceSource` = `{ id, path, origin(folder|github), ref }`
-- フォルダから種別を自動判定する: `client/AnimationList.lua` と `types.lua` があれば rpemotes 系、`shared/data/` があれば scully
+- フォルダから種別を自動判定する: `client/AnimationList.lua`（大文字小文字は問わない）があれば rpemotes 系で、その先頭が `DP = {` なら dpemotes（`types.lua` は任意。旧 rpemotes と dpemotes には無い）、`shared/data/` があれば scully。rpemotes 系は 1 つのローダーで読み、`RP` / `DP` のどちらのグローバルでもよい。リストが参照する `Config`（旧リストの `PtfxInfo`）はサンドボックス側のスタブで受ける
 - `origin=github` は GitHub の zip（`/archive/refs/heads/<ref>.zip`）を `resources/<id>/` に展開する。取得日時と ref を `source.json` に記録し、「更新」で再取得できるようにする。個人配布のリソースはフォルダ指定で読む
-- 既定のリソース 3 つ（rpemotes-reborn / rpemotes-reborn-nui / scully_emotemenu）の URL は App 側に定数で持つ。アプリにリソースを同梱はしない
+- 既定のリソース 5 つ（rpemotes-reborn / rpemotes-reborn-nui / scully_emotemenu / 旧 rpemotes / dpemotes）の URL は App 側に定数で持つ。アプリにリソースを同梱はしない
 
 ### 4.5 Drawable（小道具・メッシュ）
 
@@ -298,7 +298,7 @@ src/EmotePreviewer.Web/
     main.tsx, App.tsx
     shared/      api.ts（fetch ラッパー、SSE 購読）, types.ts（API の DTO）, store.ts（Zustand）, i18n
     catalog/     検索ボックス、絞り込み、仮想リスト、詳細パネル
-    viewer/      scene.ts（renderer / camera / OrbitControls / グリッド / テーマ）
+    viewer/      scene.ts（renderer / camera / OrbitControls / グリッド / テーマ。描画は「変化があったフレームだけ」: 再生が進んだ・カメラが動いた・読み込みや切替が invalidate() を呼んだときに限り renderer.render する。サーバー切断中（オーバーレイ表示中）は setPaused(true) でループごと止める）
                  skeleton.ts（バインドポーズ → Bone 階層 + 棒人間 LineSegments）
                  playback.ts（clip.bin → AnimationClip → AnimationMixer で時刻の姿勢を出す `Playback`、共有の時間軸 `Timeline`）
                  props.ts（.bin → BufferGeometry、ボーンへの取り付け）

@@ -406,11 +406,18 @@ switch (cmd)
             if (parts.Length == 2 && int.TryParse(parts[1], out var idx)) d = gd.LoadRawDrawableDictionary(parts[0])?.Values?.Entries?.ElementAtOrDefault(idx);
             else if (parts.Length == 2) d = gd.LoadRawPedDictionary(parts[0], parts[1])?.Values?.Entries?.FirstOrDefault();
             else d = gd.LoadRawDrawable(target);
+            if (d == null && parts.Length == 1 && gd.LoadRawFragment(target) is { } frag)
+            {
+                // Props with physics are fragments; the game draws the primary drawable, whose models sit on skeleton bones.
+                d = frag.PrimaryDrawable ?? frag.ClothDrawable;
+                var children = frag.PhysicsLODGroup?.PhysicsLOD1?.Children;
+                Console.WriteLine($"{target}: fragment, children={children?.Count.ToString() ?? "none"} damaged={frag.DamagedDrawables?.Count ?? 0}");
+            }
             if (d == null) { Console.WriteLine($"{target}: not found"); continue; }
             // Drawables may embed the skeleton their blend indices refer to (see MeshData.BlendBoneTags); --bones lists it as name:tag.
             var own = d.Skeleton?.BoneData?.Bones;
             Console.WriteLine($"{target}: embedded skeleton={(own?.Count.ToString() ?? "none")}"
-                + (own != null && rest.Contains("--bones") ? " " + string.Join(",", Enumerable.Range(0, own.Count).Select(i => own[i].Name?.Value + ":" + own[i].BoneId)) : ""));
+                + (own != null && rest.Contains("--bones") ? " " + string.Join(",", Enumerable.Range(0, own.Count).Select(i => $"{i}={own[i].Name?.Value}:{own[i].BoneId} parent={own[i].ParentIndex} t=({own[i].Translation.X:F3},{own[i].Translation.Y:F3},{own[i].Translation.Z:F3})")) : ""));
             Console.WriteLine($"{target}: lods high={d.LodGroup.LodHigh?.Models?.Entries?.Count} med={d.LodGroup.LodMedium?.Models?.Entries?.Count} low={d.LodGroup.LodLow?.Models?.Entries?.Count} vlow={d.LodGroup.LodVeryLow?.Models?.Entries?.Count}");
             var shs = d.ShaderGroup?.Shaders?.Entries;
             if (shs != null)

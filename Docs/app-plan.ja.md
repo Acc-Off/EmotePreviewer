@@ -16,11 +16,16 @@
 | M7 | 完了 | 小道具は 1,083 サブメッシュ中 831 にディフューズが付く（埋め込み 792 + `<model>.ytd` 39。残りは共有 `.ytd` 参照で未解決＝無地）。ped は全部位が付く。BC1 / BC3 / BC7 / RGBA8 を DDS のまま配信し、パレットシェーダ（髪など）は G チャンネルをグレー化して単色でティント |
 | M8 | 完了 | 1,102 体（フォルダ型 159、単体型 943）を `/api/peds` で列挙。部位は「番号 0（髪だけ次を試す）で 8 頂点超」を既定にする。動物エモート 221 件はすべて対応 ped に解決（pug 133、rottweiler 65、cat 13、coyote 8、retriever 2）。ped 切替は再索引なし |
 | M9 | 完了 | rpemotes 93 件 + scully 1,703 件（同期ダンス 1,643 件は自分自身が相手）の相手を全件解決（`devtools shared`）。配置は貼り付け 91、オフセット 32、既定 1,673。ハグ・おんぶ・CPR・パグを抱える（人間＋動物）を実機で確認 |
+| M11 | 完了（2026-09-12） | 旧 rpemotes（`Daudeuf/rpemotes`）と dpemotes（`andristum/dpemotes`）を読む。ローダーは rpemotes 系 1 本のままで、`types.lua` 無し・`Config` 参照・`DP` グローバル・`{"Expression", 名前}` 形式を吸収。実物のクローンで 1,645 件 / 529 件、警告 0。取得テンプレートに 2 つ追加 |
 | M10 | 完了（2026-09-11） | 2 スロット再生（プライマリ全身 + セカンダリ上半身）。flag をゲームと同じ規則で読み、`SKEL_Spine_Root` サブツリーのマスクと ROOT の付け替えで合成。既知角度の診断クリップ 8 ケースを実機画像と照合。ニュートラルは `move_m@generic` / `idle` |
 
 リスト型クリップの修正（2026-09-11、M10 の実機比較で発見）: `ClipAnimations`（Type 2）の各要素に生のクリップ時刻を渡していたため、長いシーン用アニメーションの一部区間を指す要素（`friends@frj@ig_1` の `wave_a` = 67.9 秒のアニメーションの 53.2〜56.7 秒など）が先頭から再生され、手を振るはずが腕が上がらなかった。要素ごとに `StartTime + (t × Rate) mod (EndTime − StartTime)` で写すよう修正（`GtClip.Sample`、仕様書 §5.4 も訂正）。焼き込みキャッシュの版数を 4 に上げて古い `.bin` を無効化。`devtools ycd` / `clipinfo` を追加し、GTA 依存テスト `ListClipElementsPlayInsideTheirTimeWindows` で固定。影響範囲は大きく、再生可能 5,836 クリップのうちリスト型が 4,859、そのうち要素の StartTime が 0 でないもの（= 修正前は別の区間を再生していたもの）が 3,443（`devtools bake` が数える）。
 
 太もも roll ボーンの修正（2026-09-11、診断クリップの実機比較で発見）: `RB_L/R_ThighRoll`（骨盤の子、太ももと同じ位置）はゲームがアニメーション後に太ももから決める補助ボーンで、クリップにそのトラックがあっても無視される。`PoseSolver.FixThighRollBones` は「クリップが roll ボーンを動かしていないときだけ」太ももの回転をコピーしていたため、全ボーンにトラックを書く合成クリップ（診断用や変換ツール製）で roll ボーンがバインドに残り、太ももメッシュが引っ張られて脚が曲がって見えた。無条件にコピーするよう変更（`PoseSolverTests`）。
+
+小道具の部品位置の修正（2026-09-12、利用者の指摘「foodtray 系でドリンクがトレイを突き破っている」）: 壊れる小道具（`.yft` フラグメント）はトレイ・カップ・料理を別々の `DrawableModel` として持ち、各モデルは埋め込みスケルトンの骨（`DrawableModel.RootBoneIndex`）の空間で頂点を持つ。ゲームは骨のバインド行列を掛けて描くが、`MeshExtractor` はスキン無しモデルにこの変換を掛けていなかったため、カップ（骨は +0.139 m）が原点に沈んでトレイを貫いていた。v0.1.0 で `.yft` を読むようにした時からの不具合。骨のバインド行列（親子合成）を位置と法線に掛けるよう修正（`MeshExtractor.BoneBindMatrices`、GTA 依存テスト `FragmentPartsSitOnTheirBones`）。影響する小道具は rpemotes-reborn + scully の 500 モデル中 10（食事トレイ 6 種、`prop_bin_07d` の蓋、`prop_snow_sign_road_01a` の標識と支柱、`sf_prop_sf_el_guitar_02a` のヘッド・ネック・ボディ、消火器とサーフボードは骨がゼロ位置で変化なし）。`devtools geom` はフラグメントも読み、`--bones` で骨の平行移動を出す。
+
+描画ループの省力化（2026-09-12、利用者の指摘「『EmotePreviewer が終了しました』の表示中に別ウィンドウの YouTube が重くなる」）: 原因は、全画面の `backdrop-filter: blur` を掛けたオーバーレイの下で three.js が毎フレーム WebGL キャンバスを描き直していたため、Chrome のコンポジタが毎フレーム画面全体のぼかし合成をやり直していたこと（タブが表示中のときだけ起きる = rAF とコンポジタは非表示タブで止まる、という観察と一致）。対処は 2 つ: (1) 切断中は `Scene.setPaused(true)` で rAF ループごと止める（`Viewer` が store の `connected === false` を見て呼ぶ。復帰時に `last` を取り直すので時間が飛ばない）。(2) 姿勢が変わらないフレームは描かない: `Scene.tick` は `onTick`（`ViewerController.tick` がタイムラインの前進か `dirty` を返す）・`OrbitControls.update()` の戻り値（ダンピングが収束するまで true）・`invalidate()` のいずれかが立ったときだけ `renderer.render` する。`invalidate()` はリサイズ・テーマ変更・カメラプリセット・小道具やメッシュやテクスチャの切替・非同期のテクスチャ到着（`TextureCache` のコールバック）から呼ぶ。ヘッドレス Chrome で `renderer.info.render.frame` を数えた結果: 再生中 60 fps、一時停止中 0、カメラプリセット後（収束後）0、サーバー終了後 0。撮影ツール（一時停止 → シーク → プリセット）の出力は変わらない。
 
 実機で触って見つかった修正（同日）:
 
@@ -319,6 +324,29 @@ M1〜M2 が最小限の成果物。M3 以降は順序を入れ替えてよい（
 5. 検証: 診断リソース `tools/diag/preview-res`（private）を読ませて `tools/shot-layer.mjs` で撮り、実機画像と照合
 
 結果（2026-09-11）: 照合ケース 8 件（脚だけ倒れる、胴体だけ腰から倒れる、前傾が直立に戻る、前傾のまま腕だけ、脚・骨盤は動かない、脚 4 秒・腕 3 秒で独立に回る、pushup + crossarms、sit + clap）がすべて実機画像と一致。実装中の落とし穴: three.js の `PropertyMixer` は評価値が変わらないボーンを書き戻さないため、ROOT の付け替えをボーンの現在値に掛けると同じ時刻を再表示するたびに回転が重なる（胴体が背中側へ折れて見えた）。付け替えは焼き込みデータから毎回計算する。未対応: セカンダリの開始オフセット、開始時のブレンド（即時切替）、車内 flag 35、動物 ped のニュートラル idle。
+
+## M11: 旧 rpemotes と dpemotes への対応
+
+目標: rpemotes-reborn の前身である rpemotes（`Daudeuf/rpemotes`、TayMcKenzieNZ 版の 2024-02 時点のスナップショット、325 本の同梱 `.ycd` と 153 本の小道具）と、さらにその前身の dpemotes（`andristum/dpemotes`、カジノ DLC のアニメーションを同梱）を、そのままフォルダ指定または GitHub 取得で読める。古いメニューを使い続けているサーバーの一覧を確認したい利用者向け。
+
+事前調査（2026-09-12）: 両方をクローンして既存の `RpEmotesLoader` に通したところ、書式は rpemotes-reborn とほぼ同じで、差分は 4 点だけだった。
+
+1. `types.lua` が無い（両方）。種別判定が `types.lua` を必須にしていたので検出できない。リストは旧式の `EmoteLoop / EmoteMoving / EmoteStuck` ブールしか使わず、`ReadFlag` は既にこの経路を持つ（両方の `Emote.lua` も Moving → 51、Loop → 1、Stuck → 50 で reborn と同じ）
+2. `PtfxInfo = Config.Languages[Config.MenuLanguage]['pee']` のように、リストがリソースの `config.lua` のグローバル `Config` を参照する（rpemotes 10 箇所、dpemotes 4 箇所。reborn には無い）。無いと Lua の実行時エラーで読み込み全体が失敗する
+3. dpemotes はグローバルが `DP`、フォルダが `Client/`（大文字）
+4. dpemotes の Expressions は `{"Expression", "mood_angry_1"}` 形式（名前が 2 番目）
+
+それ以外（Walks、Shared の 4 番目、Scenario / MaleScenario / ScenarioObject、Prop / SecondProp、SyncOffset*、Attachto、EmoteDuration、StartDelay、AnimalEmote、末尾でその場マージする `AnimationListCustom.lua`）はそのまま通る。内容は reborn と大部分が重なる（rpemotes だけのクリップ 45、dpemotes だけのクリップ 47）。
+
+タスク:
+
+1. Core: `ResourceSource.DetectKind` は `client/AnimationList.lua`（大文字小文字を無視）だけで rpemotes 系と判定し、ファイル先頭が `DP = {` なら `DpEmotes`。`types.lua` は任意。`KindName` で API / UI 向けの名前（`rpemotes` / `dpemotes` / `scully`）を一元化
+2. Core: サンドボックスに `AnimFlag` / `ScenarioType` の既定値と、何を引いても自分を返す `Config` スタブを置く。`RpEmotesLoader` は `RP` が無ければ `DP` を読み、Expressions の dpemotes 形式を吸収
+3. App: 取得テンプレートに `Daudeuf/rpemotes@master` と `andristum/dpemotes@master` を追加。種別の文字列を `KindName` に寄せる
+4. Web: 種別 `dpemotes` の型と表示名
+5. テスト: 種別判定（types.lua 無し / `Client/` + `DP`）、旧 rpemotes の `Config` 参照とその場マージ、dpemotes の Expressions / Walks / Shared / PropEmotes（Core 80 件、App 17 件）
+
+結果（2026-09-12）: 実物のクローンを読ませて rpemotes 1,645 件（再生可 1,522。残りは表情・シナリオ 69、リソース側の誤記 `nill` などクリップ無し 47、辞書無し 7）、dpemotes 529 件（再生可 450。表情・シナリオ 66、クリップ無し 8、辞書無し 5）、警告 0。同梱 `.ycd` からの再生（`dancesilly7`）と Shared の相手解決（`hug` → `hug2`、前方 1.05 m）をヘッドレス画面で確認。dpemotes の `Emote.lua` にはネストした `if` の取り違えがあるが、リストの読み取りには関係しない。
 
 ## 横断事項
 

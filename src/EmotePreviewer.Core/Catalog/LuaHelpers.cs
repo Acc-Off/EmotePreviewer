@@ -10,6 +10,14 @@ internal static class LuaHelpers
         lua.State.Encoding = System.Text.Encoding.UTF8;
         // Common FiveM / ox_lib globals referenced by data files.
         lua.DoString(@"
+            -- rpemotes-reborn defines these in types.lua; the legacy rpemotes and dpemotes have no such file.
+            AnimFlag = { MOVING = 51, LOOP = 1, STUCK = 50 }
+            ScenarioType = { MALE = 'MaleScenario', SCENARIO = 'Scenario', OBJECT = 'ScenarioObject' }
+            -- Legacy lists read menu strings from the resource config (Config.Languages[Config.MenuLanguage]['pee']);
+            -- any lookup on this stub yields the stub again, so such expressions evaluate without the real config.lua.
+            local any = {}
+            setmetatable(any, { __index = function() return any end, __call = function() return any end })
+            Config = any
             locale = function(k, ...) return k end
             Translate = function(k, ...) return k end
             vec3 = function(x, y, z) return { x = x, y = y, z = z } end

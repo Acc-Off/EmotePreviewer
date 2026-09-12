@@ -18,8 +18,8 @@ export class Scene {
   readonly camera: THREE.PerspectiveCamera;
   readonly controls: OrbitControls;
   readonly grid: THREE.GridHelper;
-  /** Called every frame before rendering with the elapsed seconds. */
-  onTick: ((dt: number) => void) | null = null;
+  /** Called every frame before rendering with the elapsed seconds; returns whether the pose changed (a frame is drawn then). */
+  onTick: ((dt: number) => boolean) | null = null;
 
   private readonly canvas: HTMLCanvasElement;
   private readonly resizeObserver: ResizeObserver;
@@ -28,6 +28,9 @@ export class Scene {
   private frame = 0;
   private last = 0;
   private disposed = false;
+  private paused = false;
+  /** Set by anything that changed what is on screen outside the tick (mesh or texture loaded, toggle, resize, theme). */
+  private needsRender = true;
   private readonly target = new THREE.Vector3(0, 0.9, 0);
 
   constructor(canvas: HTMLCanvasElement) {
@@ -41,6 +44,8 @@ export class Scene {
     this.controls.maxPolarAngle = Math.PI * 0.95;
     this.controls.minDistance = 0.3;
     this.controls.maxDistance = 20;
+    // Dragging changes the camera between ticks; damping keeps update() returning true until it settles.
+    this.controls.addEventListener("change", this.invalidate);
     this.grid = new THREE.GridHelper(4, 16, 0xffffff, 0xffffff);
     (this.grid.material as THREE.Material).transparent = true;
     (this.grid.material as THREE.Material).opacity = 0.9;
@@ -83,12 +88,35 @@ export class Scene {
     }
     this.controls.target.copy(t);
     this.controls.update();
+    this.invalidate();
+  }
+
+  /** Asks for one more frame: call after changing the scene outside the tick (the tick itself notices playback and camera motion). */
+  readonly invalidate = (): void => {
+    this.needsRender = true;
+  };
+
+  /**
+   * Stops the animation loop entirely (nothing advances, nothing is drawn) and restarts it on demand. Used while the
+   * server is gone: the full-screen blurred overlay on top would otherwise re-composite a 60 fps WebGL canvas.
+   */
+  setPaused(on: boolean): void {
+    if (this.paused === on || this.disposed) return;
+    this.paused = on;
+    if (on) {
+      cancelAnimationFrame(this.frame);
+      return;
+    }
+    this.last = performance.now();
+    this.invalidate();
+    this.frame = requestAnimationFrame(this.tick);
   }
 
   private readonly applyTheme = (): void => {
     this.scene.background = new THREE.Color(cssVar("--viewport") || "#e3e6eb");
     (this.grid.material as THREE.LineBasicMaterial).color.set(cssVar("--grid") || "#c4cad3");
     this.themeListeners.forEach((l) => l());
+    this.invalidate();
   };
 
   private readonly themeListeners = new Set<() => void>();
@@ -107,21 +135,29 @@ export class Scene {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.invalidate();
   }
 
+  /**
+   * One animation frame. The scene is only drawn when something changed: the playback moved (onTick), the camera
+   * moved (controls.update reports it) or a load / toggle asked for a frame. A paused clip therefore costs no GPU time.
+   */
   private readonly tick = (now: number): void => {
-    if (this.disposed) return;
+    if (this.disposed || this.paused) return;
     this.frame = requestAnimationFrame(this.tick);
     const dt = Math.min(0.25, (now - this.last) / 1000);
     this.last = now;
-    this.onTick?.(dt);
-    this.controls.update();
+    const animated = this.onTick?.(dt) ?? false;
+    const cameraMoved = this.controls.update();
+    if (!animated && !cameraMoved && !this.needsRender) return;
+    this.needsRender = false;
     this.renderer.render(this.scene, this.camera);
   };
 
   dispose(): void {
     this.disposed = true;
     cancelAnimationFrame(this.frame);
+    this.controls.removeEventListener("change", this.invalidate);
     this.resizeObserver.disconnect();
     this.themeObserver.disconnect();
     this.media.removeEventListener("change", this.applyTheme);

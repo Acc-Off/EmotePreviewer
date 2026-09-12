@@ -78,6 +78,11 @@ public static class MeshExtractor
         if (ownBones != null)
             for (int i = 0; i < ownBones.Count; i++) { paletteTags.Add(ownBones[i].BoneId); paletteIndex.TryAdd(ownBones[i].BoneId, i); }
         int clothVertices = 0, clothUnbound = 0;
+        // Models that are not skinned sit on one bone of the drawable's own skeleton (DrawableModel.RootBoneIndex) and
+        // store their vertices in that bone's space: breakable props (food trays, bottles) keep the cup, the burger and
+        // the tray as separate models on separate bones. The game draws each with the bone's bind matrix; without it
+        // every part collapses onto the origin (the cup sank through the tray).
+        var boneWorld = BoneBindMatrices(ownBones);
 
         if (lod?.Models?.Entries == null) warnings.Add("drawable has no LOD models");
         else
@@ -85,6 +90,8 @@ public static class MeshExtractor
             foreach (var model in lod.Models.Entries)
             {
                 if (model?.Geometries?.Entries == null) continue;
+                Matrix4x4? modelMatrix = model.IsSkinned == 0 && boneWorld != null && model.RootBoneIndex < boneWorld.Length && !boneWorld[model.RootBoneIndex].IsIdentity
+                    ? boneWorld[model.RootBoneIndex] : null;
                 for (int g = 0; g < model.Geometries.Entries.Count; g++)
                 {
                     var geom = model.Geometries.Entries[g];
@@ -127,10 +134,20 @@ public static class MeshExtractor
                     {
                         var vertex = data.AsSpan(v * stride, stride);
                         var p = ReadVector(vertex[pos.offset..], pos.type);
+                        if (modelMatrix is { } pm)
+                        {
+                            var q = Vector3.Transform(new Vector3(p.X, p.Y, p.Z), pm);
+                            p = new Vector4(q, 1f);
+                        }
                         positions.Add(p.X); positions.Add(p.Y); positions.Add(p.Z);
                         if (anyNormals)
                         {
                             var n = hasNormal ? ReadVector(vertex[nrm.offset..], nrm.type) : Vector4.UnitZ;
+                            if (modelMatrix is { } nm)
+                            {
+                                var r = Vector3.Normalize(Vector3.TransformNormal(new Vector3(n.X, n.Y, n.Z), nm));
+                                n = new Vector4(r, 0f);
+                            }
                             normals.Add(n.X); normals.Add(n.Y); normals.Add(n.Z);
                         }
                         if (anyUvs)
@@ -221,6 +238,25 @@ public static class MeshExtractor
             BoundsMin = new Vector3(drawable.LodGroup.BoundingBoxMin.X, drawable.LodGroup.BoundingBoxMin.Y, drawable.LodGroup.BoundingBoxMin.Z),
             BoundsMax = new Vector3(drawable.LodGroup.BoundingBoxMax.X, drawable.LodGroup.BoundingBoxMax.Y, drawable.LodGroup.BoundingBoxMax.Z),
         };
+    }
+
+    /// <summary>
+    /// Bind-pose world matrix of every bone of a drawable's own skeleton (scale, rotation, translation composed down the
+    /// parent chain, row-vector convention like <see cref="Anim.PoseSolver"/>), or null when it has none.
+    /// </summary>
+    static Matrix4x4[]? BoneBindMatrices(RageLib.Resources.Common.ResourceSimpleArray<Bone>? bones)
+    {
+        if (bones == null || bones.Count == 0) return null;
+        var world = new Matrix4x4[bones.Count];
+        for (int i = 0; i < bones.Count; i++)
+        {
+            var b = bones[i];
+            var scale = b.Scale == Vector3.Zero ? Vector3.One : b.Scale;
+            var local = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateFromQuaternion(b.Rotation) * Matrix4x4.CreateTranslation(b.Translation);
+            // Bones are stored parents first; a parent index that breaks the rule is treated as a root.
+            world[i] = b.ParentIndex >= 0 && b.ParentIndex < i ? local * world[b.ParentIndex] : local;
+        }
+        return world;
     }
 
     /// <summary>Average of the first vertex colour channel (r, g, b, a in 0..255) of a geometry, for diagnostics; null when absent.</summary>

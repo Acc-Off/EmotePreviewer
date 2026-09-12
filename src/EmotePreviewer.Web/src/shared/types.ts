@@ -102,12 +102,14 @@ export interface EmoteDto {
   partner: PartnerDto | null;
 }
 
+export type ResourceKindName = "rpemotes" | "dpemotes" | "scully" | "unknown";
+
 export interface CatalogSourceDto {
   id: string;
   path: string;
   origin: "folder" | "github";
   ref: string | null;
-  kind: "rpemotes" | "scully" | "unknown";
+  kind: ResourceKindName;
   entries: number;
 }
 
@@ -230,7 +232,7 @@ export interface DictionaryClipsDto {
 
 export interface ResourceDetectDto {
   path: string;
-  kind: "rpemotes" | "scully" | "unknown";
+  kind: ResourceKindName;
   suggestedId: string;
 }
 
@@ -264,7 +266,7 @@ export interface ResourceItemDto {
   ref: string | null;
   repository: string | null;
   enabled: boolean;
-  kind: "rpemotes" | "scully" | "unknown";
+  kind: ResourceKindName;
   entries: number;
   exists: boolean;
   source: ResourceSourceInfo | null;
@@ -275,7 +277,7 @@ export interface ResourceTemplateDto {
   id: string;
   repository: string;
   ref: string;
-  kind: "rpemotes" | "scully";
+  kind: Exclude<ResourceKindName, "unknown">;
   description: string;
   installed: boolean;
 }

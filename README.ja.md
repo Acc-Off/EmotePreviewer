@@ -4,7 +4,7 @@
 
 [English](README.md) | 日本語
 
-EmotePreviewer は [rpemotes-reborn](https://github.com/alberttheprince/rpemotes-reborn) と [scully_emotemenu](https://github.com/Scullyy/scully_emotemenu) のエモート定義を読み、それぞれのアニメーションを手元の GTA V から探し出して、ブラウザの 3D ビューアで再生します。サーバーに入る必要も、ロード待ちもありません。6,000 件超の一覧からエモートを選べば 1 秒後には動いています。小道具付きで、好きな ped で、2 人で行うエモートなら相手も一緒に。単一の Windows 実行ファイルで、インストールは不要です。
+EmotePreviewer は [rpemotes-reborn](https://github.com/alberttheprince/rpemotes-reborn) と [scully_emotemenu](https://github.com/Scullyy/scully_emotemenu)（旧版の [rpemotes](https://github.com/Daudeuf/rpemotes) と [dpemotes](https://github.com/andristum/dpemotes) も）のエモート定義を読み、それぞれのアニメーションを手元の GTA V から探し出して、ブラウザの 3D ビューアで再生します。サーバーに入る必要も、ロード待ちもありません。6,000 件超の一覧からエモートを選べば 1 秒後には動いています。小道具付きで、好きな ped で、2 人で行うエモートなら相手も一緒に。単一の Windows 実行ファイルで、インストールは不要です。
 
 <p align="center">
   <img src="Docs/images/layer-walk-flag-ja.png" alt="歩き方（Casual）の上に旗を掲げる上半身エモートを重ねて再生" width="800">
@@ -23,7 +23,7 @@ EmotePreviewer は [rpemotes-reborn](https://github.com/alberttheprince/rpemotes
 | **動物エモート** | 対応する動物（ロットワイラー、パグ、猫、コヨーテ …）に自動で切り替わる |
 | **歩行スタイル** | ゲームのクリップセット表を引いて歩行サイクルを再生。<br>シナリオと表情は再生できない理由付きで一覧に出る |
 | **辞書内のクリップ** | あるエモートの辞書にある他のクリップも、ビューアを離れずに選んで見られる |
-| **リソースの取得** | rpemotes-reborn / scully_emotemenu を設定画面から GitHub 経由で取得・更新。<br>手元のフォルダも追加できる |
+| **リソースの取得** | rpemotes-reborn / scully_emotemenu（旧版の rpemotes / dpemotes も）を設定画面から GitHub 経由で取得・更新。<br>手元のフォルダも追加できる |
 | **編集しながら使える** | フォルダリソースは監視されていて、追加・上書きした `.ycd` や Lua ファイルは少し後に反映される。<br>表示中のクリップは再生位置を保ったまま差し替わる。<br>設定画面の「再スキャン」で手動でも |
 
 <p align="center">
@@ -41,7 +41,7 @@ EmotePreviewer は [rpemotes-reborn](https://github.com/alberttheprince/rpemotes
 - Windows 10 / 11（x64）とブラウザ（Edge、Chrome …）。
 - **GTA V PC 版の Legacy 版**（Steam、Rockstar Games Launcher、Epic）。アニメーション、スケルトン、メッシュ、テクスチャの読み出し元です。GTA V Enhanced は対象外。ゲームが無くても一覧と検索は使えますが、再生はできません。
 - **鍵ファイル 4 つ。** 自分のゲームから [EmotePreviewer Key Tool](https://github.com/Acc-Off/EmotePreviewerKeyTool) で作ります（下の手順 1）。アーカイブは暗号化されており、EmotePreviewer は鍵材料を含みません。
-- エモートリソース本体。設定画面から rpemotes-reborn と scully_emotemenu を GitHub から取得できます。手元にあるコピーはフォルダとして使えます。
+- エモートリソース本体。設定画面から rpemotes-reborn と scully_emotemenu（旧版の rpemotes と dpemotes も）を GitHub から取得できます。手元にあるコピーはフォルダとして使えます。
 
 ## はじめかた
 
